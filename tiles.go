@@ -32,11 +32,11 @@
 package emdata
 
 import (
-	"os"
-	"log"
 	"fmt"
 	"image"
 	"image/color"
+	"log"
+	"os"
 	"path/filepath"
 	"reflect"
 
@@ -56,14 +56,14 @@ func ReadSuperpixelTile(stack TiledJsonStack, relTilePath string) (
 	if err != nil {
 		switch stack.(type) {
 		case *BaseStack:
-			log.Fatalln("Could not find superpixel tile (", relTilePath, 
+			log.Fatalln("Could not find superpixel tile (", relTilePath,
 				") in base stack (", stack.String(), ")!")
 		case *ExportedStack:
 			var exported *ExportedStack = stack.(*ExportedStack)
 			filename = filepath.Join(exported.Base.String(), relTilePath)
 			_, err = os.Stat(filename)
 			if err != nil {
-				log.Fatalln("Could not find superpixel tile (", relTilePath, 
+				log.Fatalln("Could not find superpixel tile (", relTilePath,
 					") in stack (", exported.String(), ") or its base (",
 					exported.Base.String(), ")!")
 			}
@@ -87,7 +87,6 @@ func ReadSuperpixelTile(stack TiledJsonStack, relTilePath string) (
 
 	return superpixels, format
 }
-
 
 type TiledJsonStack interface {
 	String() string
@@ -135,7 +134,7 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
 	superpixels, _ := ReadSuperpixelTile(stack, relTilePath)
 
 	// Determine relative point within this tile
-	tileX := int(pt.X()) - col * TileSize
+	tileX := int(pt.X()) - col*TileSize
 	tileY := superpixels.Bounds().Max.Y - (int(pt.Y()) - row*TileSize) - 1
 
 	// Get the body id

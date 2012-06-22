@@ -38,32 +38,49 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
 //	"regexp"
 )
 
 const (
-	SuperpixelToSegmentFilename  = "superpixel_to_segment_map.txt"
-	SegmentToBodyFilename     = "segment_to_body_map.txt"
-	SuperpixelBoundsFilename = "superpixel_bounds.txt"
+	SuperpixelToSegmentFilename = "superpixel_to_segment_map.txt"
+	SegmentToBodyFilename       = "segment_to_body_map.txt"
+	SuperpixelBoundsFilename    = "superpixel_bounds.txt"
 )
 
-// Enumerate the types of superpixel id formats
-const (
-	SuperpixelNone	 = iota
-	Superpixel16Bits
-	Superpixel24Bits
-)
+// Superpixel is a Raveler-oriented description of a superpixel that
+// breaks a unique superpixel id into two components: a slice and a
+// unique label within that slice.
+type Superpixel struct {
+	Slice uint32
+	Label uint32
+}
+
+type Superpixels []Superpixel
+
+// SuperpixelToBodyMap holds Superpixel -> Body Id mappings
+type SuperpixelToBodyMap map[Superpixel]BodyId
+
+// BodyToSuperpixelMap holds Body Id -> Superpixel mappings
+type BodyToSuperpixelsMap map[BodyId]Superpixels
 
 // SuperpixelFormat notes whether superpixel ids, if present, 
 // are in 16-bit or 24-bit values.
 type SuperpixelFormat uint8
 
+// Enumerate the types of superpixel id formats
+const (
+	SuperpixelNone SuperpixelFormat = iota
+	Superpixel16Bits
+	Superpixel24Bits
+)
+
 // SuperpixelMapping holds both forward and reverse superpixel<->body maps.
 type SuperpixelMapping struct {
-	mapLoaded   bool
-	spToBodyMap SuperpixelToBodyMap
+	mapLoaded       bool
+	spToBodyMap     SuperpixelToBodyMap
 	reverseComputed bool
-	bodyToSpMap BodyToSuperpixelMap
+	bodyToSpMap     BodyToSuperpixelsMap
 }
 
 // Stack is a directory that has a base set of capabilities
@@ -86,7 +103,6 @@ func (stack *Stack) ReadTxtMaps(computeReverse bool) {
 		fmt.Println("Loading superpixel->segment->body maps for stack:\n",
 			stack.String())
 		stack.spToBodyMap = make(SuperpixelToBodyMap)
-		stack.bodyToSpMap = make(BodyToSuperpixelMap)
 
 		// Load superpixel to segment map
 		filename := filepath.Join(stack.String(), SuperpixelToSegmentFilename)
@@ -97,25 +113,25 @@ func (stack *Stack) ReadTxtMaps(computeReverse bool) {
 		linenum := 0
 		lineReader := bufio.NewReader(file)
 		for {
-			line, err := lineReader.ReadString('\n');
+			line, err := lineReader.ReadString('\n')
 			if err != nil {
 				break
 			}
 			if line[0] == ' ' || line[0] == '#' {
 				continue
-			} 
+			}
 			var superpixel Superpixel
 			var segment BodyId
 			if _, err := fmt.Sscanf(line, "%d %d %d", &superpixel.Slice,
 				&superpixel.Label, &segment); err != nil {
 				log.Fatalf("Error line %d in %s", linenum, filename)
 			}
-			stack.spToBodyMap[superpixel] = segment  // First pass store segment
+			stack.spToBodyMap[superpixel] = segment // First pass store segment
 			linenum++
 		}
 
 		// Load segment to body map
-		segmentToBodyMap := make(map[BodyId] BodyId)
+		segmentToBodyMap := make(map[BodyId]BodyId)
 		filename = filepath.Join(stack.String(), SegmentToBodyFilename)
 		file, err = os.Open(filename)
 		if err != nil {
@@ -124,13 +140,13 @@ func (stack *Stack) ReadTxtMaps(computeReverse bool) {
 		linenum = 0
 		lineReader = bufio.NewReader(file)
 		for {
-			line, err := lineReader.ReadString('\n');
+			line, err := lineReader.ReadString('\n')
 			if err != nil {
 				break
 			}
 			if line[0] == ' ' || line[0] == '#' {
 				continue
-			} 
+			}
 			var segment, body BodyId
 			if _, err := fmt.Sscanf(line, "%d %d", &segment, &body); err != nil {
 				log.Fatalf("Error line %d in %s", linenum, filename)
@@ -149,6 +165,7 @@ func (stack *Stack) ReadTxtMaps(computeReverse bool) {
 
 		// Compute reverse if needed
 		if computeReverse {
+			stack.bodyToSpMap = make(BodyToSuperpixelsMap)
 			stack.reverseComputed = true
 			fmt.Println("- Reverse maps computed")
 		}
@@ -156,11 +173,25 @@ func (stack *Stack) ReadTxtMaps(computeReverse bool) {
 }
 
 // SuperpixelToBody returns a body id for a given superpixel.
-func (stack Stack) SuperpixelToBody(s Superpixel) BodyId {
+func (stack *Stack) SuperpixelToBody(s Superpixel) BodyId {
 	if !stack.mapLoaded {
 		stack.ReadTxtMaps(false)
 	}
 	return stack.spToBodyMap[s]
+}
+
+// BodySuperpixels returns a body->superpixel map for a set of bodies.
+func (stack *Stack) BodySuperpixels(useBody map[BodyId]bool) BodyToSuperpixelsMap {
+	if !stack.mapLoaded {
+		stack.ReadTxtMaps(false)
+	}
+	bodyToSpMap := make(BodyToSuperpixelsMap)
+	for superpixel, bodyId := range stack.spToBodyMap {
+		if useBody[bodyId] {
+			bodyToSpMap[bodyId] = append(bodyToSpMap[bodyId], superpixel)
+		}
+	}
+	return bodyToSpMap
 }
 
 // BaseStackDir is a directory path to a base stack that includes
@@ -193,8 +224,7 @@ func (stack BaseStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
 	bounds.MinPt[0] = 0
 	bounds.MinPt[1] = 0
 	lineReader := bufio.NewReader(file)
-	for line, err := lineReader.ReadString('\n'); err == nil; 
-		line, err = lineReader.ReadString('\n') {
+	for line, err := lineReader.ReadString('\n'); err == nil; line, err = lineReader.ReadString('\n') {
 
 		items := strings.Split(line, "=")
 		keyword, value := strings.TrimSpace(items[0]),
@@ -235,6 +265,52 @@ func (stack BaseStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
 			filename, strings.Join(errors, ", "))
 	}
 	return bounds, superpixelFormat
+}
+
+type Overlaps map[BodyId]uint32
+
+type OverlapsMap map[BodyId]Overlaps
+
+// OverlapAnalysis returns a body->body mapping where
+// each body in the provided body->superpixel map is matched to
+// a body in this stack that has maximal superpixel overlap.
+func (stack *BaseStack) OverlapAnalysis(bodyToSpMap BodyToSuperpixelsMap) (
+	bodyToBodyMap map[BodyId]BodyId) {
+
+	if !stack.mapLoaded {
+		stack.ReadTxtMaps(false)
+	}
+	overlapsMap := make(OverlapsMap)
+
+	// Go through all superpixels in the provided map and track overlap.
+	for bodyId, superpixels := range bodyToSpMap {
+		for _, superpixel := range superpixels {
+			myBodyId, found := stack.spToBodyMap[superpixel]
+			if found {
+				overlapsMap[bodyId][myBodyId] += 1
+			}
+		}
+	}
+
+	// Compute body->body map based on maximal overlap
+	bodyToBodyMap = make(map[BodyId]BodyId)
+	for bodyId, overlaps := range overlapsMap {
+		var largest uint32
+		var matchedBodyId BodyId
+		for myBodyId, count := range overlaps {
+			if count > largest {
+				largest = count
+				matchedBodyId = myBodyId
+			}
+		}
+		if matchedBodyId == 0 {
+			fmt.Println("Warning!! Could not find overlapping body ",
+				"for body ", bodyId)
+		}
+		bodyToBodyMap[bodyId] = matchedBodyId
+	}
+
+	return bodyToBodyMap
 }
 
 // SessionDir is a directory path to a session, which implies data

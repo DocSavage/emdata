@@ -45,6 +45,41 @@ const (
 	JsonBookmarkFilename = "annotations-bookmarks.json"
 )
 
+// JsonBodies is the high-level structure for an entire
+// body annotation list
+type JsonBodies struct {
+	Metadata map[string]interface{}
+	Data     []JsonBody `json:"data"`
+}
+
+type JsonBody struct {
+	Body     BodyId `json:"body ID"`
+	Status   string `json:"status"`
+	Anchor   string `json:"anchor,omitempty"`
+	Name     string `json:"name,omitempty"`
+	CellType string `json:"cell type,omitempty"`
+	Location string `json:"location,omitempty"`
+	Comment  string `json:"comment,omitempty"`
+}
+
+// ReadBodiesJson returns a bodies structure corresponding to 
+// a JSON body annotation file.
+func ReadBodiesJson(filename string) (bodies *JsonBodies) {
+	var file *os.File
+	var err error
+	if file, err = os.Open(filename); err != nil {
+		log.Fatalf("Failed to open JSON file: %s [%s]",
+			filename, err)
+	}
+	dec := json.NewDecoder(file)
+	if err := dec.Decode(bodies); err == io.EOF {
+		log.Fatalf("No data in JSON file: %s\n", filename)
+	} else if err != nil {
+		log.Fatalf("Error reading JSON file (%s): %s\n", filename, err)
+	}
+	return bodies
+}
+
 // JsonSynapses is the high-level structure for an entire
 // synapse annotation list
 type JsonSynapses struct {
@@ -107,6 +142,25 @@ func ReadSynapsesJson(filename string) *JsonSynapses {
 type JsonStack interface {
 	StackSynapsesJsonFilename() string
 	StackBodiesJsonFilename() string
+}
+
+// ReadStackBodiesJson returns the default body annotation file
+// for a given stack.
+func ReadStackBodiesJson(stack JsonStack) *JsonBodies {
+	return ReadBodiesJson(stack.StackBodiesJsonFilename())
+}
+
+// ReadStackBodyAnnotations returns the default body annotation file
+// for a given stack.
+func ReadStackBodyAnnotations(stack JsonStack) (
+	bodyToNotesMap map[BodyId]JsonBody) {
+
+	bodyToNotesMap = make(map[BodyId]JsonBody)
+	bodyNotes := ReadBodiesJson(stack.StackBodiesJsonFilename())
+	for _, bodyNote := range bodyNotes {
+		bodyToNotesMap[bodyNote.Body] = bodyNote
+	}
+	return bodyToNotesMap
 }
 
 // ReadStackSynapsesJson returns the default synapse annotation file

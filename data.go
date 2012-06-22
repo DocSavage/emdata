@@ -35,15 +35,17 @@ import (
 	"strconv"
 )
 
-type Superpixel struct {
-	Slice uint32
-	Label uint32
-}
+// BodyId holds a label for a body.  The 0 body is reserved for
+// edges although it is generally deprecated in recent EM segmentation.
+// This is a signed quantity because 64-bits provides more than 
+// enough headroom for unique bodies, and we may want to represent
+// non-unique conditions using the same value, e.g., orphan or leaves.
+type BodyId int64
 
-type BodyId uint64
-
+// VoxelCoord holds a coordinate for a voxel.
 type VoxelCoord uint32
 
+// SetWithString sets a VoxelCoord with a number encoded as a string.
 func (v *VoxelCoord) SetWithString(s string) error {
 	value, err := strconv.Atoi(s)
 	*v = VoxelCoord(value)
@@ -55,10 +57,7 @@ func (v VoxelCoord) String() string {
 	return strconv.Itoa(int(v))
 }
 
-type SuperpixelToBodyMap map[Superpixel]BodyId
-
-type BodyToSuperpixelMap map[BodyId]Superpixel
-
+// LocationToBodyMap holds 3d Point -> Body Id mappings
 type LocationToBodyMap map[Point3d]BodyId
 
 // A Point3d is X,Y,Z coordinate with axes increasing right, down
@@ -82,7 +81,7 @@ func (pt Point3d) Z() VoxelCoord {
 
 // String returns representation like "(1,2,3)"
 func (pt Point3d) String() string {
-	return "(" + pt[0].String() + "," + pt[1].String() + "," + 
+	return "(" + pt[0].String() + "," + pt[1].String() + "," +
 		pt[2].String() + ")"
 }
 
@@ -110,3 +109,23 @@ func (bounds Bounds3d) Include(pt Point3d) bool {
 	}
 	return true
 }
+
+// TracingResult gives the result of a proofreader tracing a process.
+// Expected results are Orphan, Leaves (exits image volume), or
+// a body id, presumably of an anchor body.
+type TracingResult int64
+
+const (
+	Orphan TracingResult = -2
+	Leaves TracingResult = -1
+	// Any TracingResult >= 0 is Body Id of anchor
+)
+
+// TracingAgent is a unique id that describes a proofreading agent.
+type TracingAgent string
+
+// Tracings holds the results of agents.
+type Tracings map[TracingAgent]TracingResult
+
+// PsdTracings holds the results of agents tracing PSDs.
+type PsdTracings map[Point3d]Tracings
