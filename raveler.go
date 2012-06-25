@@ -181,11 +181,13 @@ func (stack *Stack) SuperpixelToBody(s Superpixel) BodyId {
 }
 
 // BodySuperpixels returns a body->superpixel map for a set of bodies.
-func (stack *Stack) BodySuperpixels(useBody map[BodyId]bool) BodyToSuperpixelsMap {
+func (stack *Stack) BodySuperpixels(useBody map[BodyId]bool) (
+	bodyToSpMap BodyToSuperpixelsMap) {
+
 	if !stack.mapLoaded {
 		stack.ReadTxtMaps(false)
 	}
-	bodyToSpMap := make(BodyToSuperpixelsMap)
+	bodyToSpMap = make(BodyToSuperpixelsMap)
 	for superpixel, bodyId := range stack.spToBodyMap {
 		if useBody[bodyId] {
 			bodyToSpMap[bodyId] = append(bodyToSpMap[bodyId], superpixel)
@@ -287,12 +289,14 @@ func (stack *BaseStack) OverlapAnalysis(bodyToSpMap BodyToSuperpixelsMap) (
 		for _, superpixel := range superpixels {
 			myBodyId, found := stack.spToBodyMap[superpixel]
 			if found {
+				if len(overlapsMap[bodyId]) == 0 {
+					overlapsMap[bodyId] = make(Overlaps)
+				}
 				overlapsMap[bodyId][myBodyId] += 1
 			}
 		}
 	}
 
-	// Compute body->body map based on maximal overlap
 	bodyToBodyMap = make(map[BodyId]BodyId)
 	for bodyId, overlaps := range overlapsMap {
 		var largest uint32

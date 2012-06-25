@@ -57,17 +57,35 @@ type Tracings map[TracingAgent]TracingResult
 // PsdTracing holds the results of a single agent tracing PSDs.
 type PsdTracing map[Point3d]TracingResult
 
+type JsonPsdTracings struct {
+    Metadata map[string]interface{}  `json:"metadata"`
+    Data []struct {
+        Location Point3d `json:"location"`
+        Tracings []struct {
+            Agent  string `json:"agent ID"`
+            Body   BodyID `json:"body ID"`
+        }
+    } `json:"data"`
+}
+
 func (tracing PsdTracing) WriteJson(filename string, 
     bodyToBodyMap map[BodyId]BodyId) {
 
-    file, err := os.Open(filename)
+    file, err := os.Create(filename)
     if err != nil {
-        log.Fatalf("Failed to open file for writing JSON of PSD tracing: %s\n", 
-            filename)
+        log.Fatalf("Failed to open file for writing PSD tracing: %s [%s]\n", 
+            filename, err)
     }
     enc := json.NewEncoder(file)
-    if err = enc.Encode(&tracing); err != nil {
-        log.Fatalf("Could not encoding PSD tracing: %s", err)
+
+    agent := "katzw"
+    var jsonTracings JsonPsdTracings
+    for location, result := range tracing {
+        jsonTracings.Data = append(jsonTracings.Data, 
+            {location, {{ agent, result },}})
+    }
+    if err = enc.Encode(&jsonTracings); err != nil {
+        log.Fatalf("Could not encode PSD tracing: %s", err)
     }
 }
 

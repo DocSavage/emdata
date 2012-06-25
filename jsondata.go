@@ -94,7 +94,7 @@ func ReadBodiesJson(filename string) (bodies *JsonBodies) {
 			filename, err)
 	}
 	dec := json.NewDecoder(file)
-	if err := dec.Decode(bodies); err == io.EOF {
+	if err := dec.Decode(&bodies); err == io.EOF {
 		log.Fatalf("No data in JSON file: %s\n", filename)
 	} else if err != nil {
 		log.Fatalf("Error reading JSON file (%s): %s\n", filename, err)
