@@ -36,6 +36,7 @@ import (
 	"io"
 	"log"
 	"os"
+    "regexp"
 	"path/filepath"
 )
 
@@ -52,6 +53,8 @@ type JsonBodies struct {
 	Data     []JsonBody `json:"data"`
 }
 
+// JsonBody is the basic body unit of a body annotation list,
+// containing body status, name, etc.
 type JsonBody struct {
 	Body     BodyId `json:"body ID"`
 	Status   string `json:"status"`
@@ -60,6 +63,25 @@ type JsonBody struct {
 	CellType string `json:"cell type,omitempty"`
 	Location string `json:"location,omitempty"`
 	Comment  string `json:"comment,omitempty"`
+}
+
+// AnchorComment returns true if "Anchor Body" appears in the
+// body comments.
+func (bodyNote JsonBody) AnchorComment() bool {
+	matched, err := regexp.MatchString(".*[Aa]nchor [Bb]ody.*", bodyNote.Comment)
+	if err != nil {
+		log.Fatalf("AnchorComment(): %s\n", err)
+	}
+	return matched
+}
+
+// OrphanComment returns true if "orphan" appears in the body comments.
+func (bodyNote JsonBody) OrphanComment() bool {
+	matched, err := regexp.MatchString(".*[Oo]rphan.*", bodyNote.Comment)
+	if err != nil {
+		log.Fatalf("OrphanComment(): %s\n", err)
+	}
+	return matched
 }
 
 // ReadBodiesJson returns a bodies structure corresponding to 
@@ -157,7 +179,7 @@ func ReadStackBodyAnnotations(stack JsonStack) (
 
 	bodyToNotesMap = make(map[BodyId]JsonBody)
 	bodyNotes := ReadBodiesJson(stack.StackBodiesJsonFilename())
-	for _, bodyNote := range bodyNotes {
+	for _, bodyNote := range bodyNotes.Data {
 		bodyToNotesMap[bodyNote.Body] = bodyNote
 	}
 	return bodyToNotesMap
@@ -181,3 +203,4 @@ func ReadPsdBodyMap(stack JsonStack) LocationToBodyMap {
 	}
 	return psdToBodyMap
 }
+

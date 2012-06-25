@@ -110,22 +110,3 @@ func (bounds Bounds3d) Include(pt Point3d) bool {
 	return true
 }
 
-// TracingResult gives the result of a proofreader tracing a process.
-// Expected results are Orphan, Leaves (exits image volume), or
-// a body id, presumably of an anchor body.
-type TracingResult int64
-
-const (
-	Orphan TracingResult = -2
-	Leaves TracingResult = -1
-	// Any TracingResult >= 0 is Body Id of anchor
-)
-
-// TracingAgent is a unique id that describes a proofreading agent.
-type TracingAgent string
-
-// Tracings holds the results of agents.
-type Tracings map[TracingAgent]TracingResult
-
-// PsdTracings holds the results of agents tracing PSDs.
-type PsdTracings map[Point3d]Tracings
