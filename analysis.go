@@ -32,12 +32,12 @@
 package emdata
 
 import (
-    "fmt"
-    "encoding/json"
-    "io"
-    "log"
-//    "os"
-    "strconv"
+	"fmt"
+	"encoding/json"
+	"io"
+	"log"
+	//    "os"
+	"strconv"
 )
 
 // TracingResult gives the result of a proofreader tracing a process.
@@ -46,19 +46,19 @@ import (
 type TracingResult int64
 
 const (
-    Orphan TracingResult = -2
-    Leaves TracingResult = -1
-    // Any TracingResult >= 0 is Body Id of anchor
+	Orphan TracingResult = -2
+	Leaves TracingResult = -1
+	// Any TracingResult >= 0 is Body Id of anchor
 )
 
 // String returns "Orphan", "Leaves" or the stringified body ID
 func (result TracingResult) String() string {
-    if result == Orphan {
-        return "Orphan"
-    } else if result == Leaves {
-        return "Leaves"
-    }
-    return strconv.FormatInt(int64(result), 10)
+	if result == Orphan {
+		return "Orphan"
+	} else if result == Leaves {
+		return "Leaves"
+	}
+	return strconv.FormatInt(int64(result), 10)
 }
 
 // TracingAgent is a unique id that describes a proofreading agent.
@@ -72,136 +72,133 @@ type PsdTracing map[Point3d]TracingResult
 
 func (tracing PsdTracing) WriteJson(writer io.Writer, agent TracingAgent) {
 
-    enc := json.NewEncoder(writer)
+	enc := json.NewEncoder(writer)
 
-    var trace JsonAgentTracing
-    trace.Agent = string(agent)
+	var trace JsonAgentTracing
+	trace.Agent = string(agent)
 
-    var jsonTracings JsonPsdTracings
-    jsonTracings.Metadata = CreateMetadata("PSD Tracing")
-    jsonTracings.Data = make([]JsonPsdTracing, len(tracing))
-    i := 0
-    for location, result := range tracing {
-        jsonTracings.Data[i].Location = location
-        trace.Result = result.String()
-        jsonTracings.Data[i].Tracings = []JsonAgentTracing{ trace }
-    }
-    if err := enc.Encode(&jsonTracings); err != nil {
-        log.Fatalf("Could not encode PSD tracing: %s", err)
-    }
+	var jsonTracings JsonPsdTracings
+	jsonTracings.Metadata = CreateMetadata("PSD Tracing")
+	jsonTracings.Data = make([]JsonPsdTracing, len(tracing))
+	i := 0
+	for location, result := range tracing {
+		jsonTracings.Data[i].Location = location
+		trace.Result = result.String()
+		jsonTracings.Data[i].Tracings = []JsonAgentTracing{trace}
+		i++
+	}
+	if err := enc.Encode(&jsonTracings); err != nil {
+		log.Fatalf("Could not encode PSD tracing: %s", err)
+	}
 }
 
 // CreatePsdTracing creates a PsdTracing struct by transforming assignment tracings
 // from one stack to another, assuming that watersheds are mostly preserved and
 // using maximal watershed overlap to determine equivalence among bodies.
-func CreatePsdTracing(assignmentJsonFilename string, exportSessionDir string, 
-    baseStackDir string, targetStackDir string) (tracing PsdTracing) {
+func CreatePsdTracing(assignmentJsonFilename string, exportSessionDir string,
+	baseStackDir string, targetStackDir string) (tracing PsdTracing) {
 
-    // Set these directories to appropriate Raveler stack types.
-    var baseStack BaseStack
-    baseStack.Directory = baseStackDir
+	// Set these directories to appropriate Raveler stack types.
+	var baseStack BaseStack
+	baseStack.Directory = baseStackDir
 
-    var exportedStack ExportedStack
-    exportedStack.Directory = exportSessionDir
-    exportedStack.Base = baseStack
+	var exportedStack ExportedStack
+	exportedStack.Directory = exportSessionDir
+	exportedStack.Base = baseStack
 
-    var targetStack BaseStack
-    targetStack.Directory = targetStackDir
+	var targetStack BaseStack
+	targetStack.Directory = targetStackDir
 
-    // Read in the assignment JSON: set of PSDs
-    assignment := ReadSynapsesJson(assignmentJsonFilename)
-    fmt.Println("Read assignment Json:", len(assignment.Data), "synapses")
+	// Read in the assignment JSON: set of PSDs
+	assignment := ReadSynapsesJson(assignmentJsonFilename)
+	fmt.Println("Read assignment Json:", len(assignment.Data), "synapses")
 
-    // Read in the exported body annotations to determine whether PSD was
-    // traced to anchor body or it was orphan/leaves.
-    bodyToNotesMap := ReadStackBodyAnnotations(exportedStack)
-    fmt.Println("Read exported bodies Json:", len(bodyToNotesMap), "bodies")
+	// Read in the exported body annotations to determine whether PSD was
+	// traced to anchor body or it was orphan/leaves.
+	bodyToNotesMap := ReadStackBodyAnnotations(exportedStack)
+	fmt.Println("Read exported bodies Json:", len(bodyToNotesMap), "bodies")
 
-    // For each PSD, find body associated with it using superpixel tiles
-    // and the exported session's map.
-    definitiveAnchor := 0
-    commentedAnchor := 0
-    commentedOrphan := 0
-    presumedLeaves := 0
-    noBodyAnnotated := 0
-    tracing = make(PsdTracing)
-    psdBodies := make(map[BodyId]bool)  // Set of PSD bodies
+	// For each PSD, find body associated with it using superpixel tiles
+	// and the exported session's map.
+	definitiveAnchor := 0
+	commentedAnchor := 0
+	commentedOrphan := 0
+	presumedLeaves := 0
+	noBodyAnnotated := 0
+	tracing = make(PsdTracing)
+	psdBodies := make(map[BodyId]bool) // Set of PSD bodies
 
-    for _, synapse := range assignment.Data {
-        for _, psd := range synapse.Psds {
-            bodyId := GetBodyOfLocation(&exportedStack, psd.Location)
-            bodyNote, found := bodyToNotesMap[bodyId]
-            if found {
-                var tracingResult TracingResult
-                if len(bodyNote.Anchor) != 0 {
-                    definitiveAnchor++
-                    psdBodies[bodyId] = true
-                    tracingResult = TracingResult(bodyId)
-                } else if bodyNote.AnchorComment() {
-                    commentedAnchor++
-                    psdBodies[bodyId] = true
-                    tracingResult = TracingResult(bodyId)
-                } else if bodyNote.OrphanComment() {
-                    commentedOrphan++
-                    tracingResult = Orphan
-                } else {
-                    presumedLeaves++
-                    tracingResult = Leaves
-                }
-                tracing[psd.Location] = tracingResult
-            } else {
-                noBodyAnnotated++
-                fmt.Println("WARNING!!! PSD ", psd.Location, " -> ",
-                    "exported body ", bodyId, " cannot be found in ",
-                    "body annotation file for exported stack... skipping")
-            }
-        }
-    }
+	for _, synapse := range assignment.Data {
+		for _, psd := range synapse.Psds {
+			bodyId := GetBodyOfLocation(&exportedStack, psd.Location)
+			bodyNote, found := bodyToNotesMap[bodyId]
+			if found {
+				var tracingResult TracingResult
+				if len(bodyNote.Anchor) != 0 {
+					definitiveAnchor++
+					psdBodies[bodyId] = true
+					tracingResult = TracingResult(bodyId)
+				} else if bodyNote.AnchorComment() {
+					commentedAnchor++
+					psdBodies[bodyId] = true
+					tracingResult = TracingResult(bodyId)
+				} else if bodyNote.OrphanComment() {
+					commentedOrphan++
+					tracingResult = Orphan
+				} else {
+					presumedLeaves++
+					tracingResult = Leaves
+				}
+				tracing[psd.Location] = tracingResult
+			} else {
+				noBodyAnnotated++
+				fmt.Println("WARNING!!! PSD ", psd.Location, " -> ",
+					"exported body ", bodyId, " cannot be found in ",
+					"body annotation file for exported stack... skipping")
+			}
+		}
+	}
 
-    fmt.Println("  Anchors marked with anchor tag: ", definitiveAnchor)
-    fmt.Println(" Anchors detected within comment: ", commentedAnchor)
-    fmt.Println(" Orphans detected within comment: ", commentedOrphan)
-    fmt.Println("PSD bodies with no anchor/orphan: ", presumedLeaves)
-    if noBodyAnnotated > 0 {
-        fmt.Println("\n*** PSD bodies not annotated: ", noBodyAnnotated)
-    }
+	fmt.Println("  Anchors marked with anchor tag: ", definitiveAnchor)
+	fmt.Println(" Anchors detected within comment: ", commentedAnchor)
+	fmt.Println(" Orphans detected within comment: ", commentedOrphan)
+	fmt.Println("PSD bodies with no anchor/orphan: ", presumedLeaves)
+	if noBodyAnnotated > 0 {
+		fmt.Println("\n*** PSD bodies not annotated: ", noBodyAnnotated)
+	}
 
-    // For each PSD body, determine the exported session superpixels
-    // within that body.
-    bodyToSpMap := exportedStack.BodySuperpixels(psdBodies)
+	// For each PSD body, determine the exported session superpixels
+	// within that body.
+	bodyToSpMap := exportedStack.BodySuperpixels(psdBodies)
 
-    // Determine which bodies in target stack have maximal overlap
-    // with the PSD bodies based on superpixels
-    bodyToBodyMap := targetStack.OverlapAnalysis(bodyToSpMap)
+	// Determine which bodies in target stack have maximal overlap
+	// with the PSD bodies based on superpixels
+	bodyToBodyMap := targetStack.OverlapAnalysis(bodyToSpMap)
 
-    // Finalize the PSD Tracing by transforming traced session body ids into
-    // target stack body ids using the body->body map.
-    numErrors := 0
-    altered := 0
-    for location, result := range tracing {
-        if result != Orphan && result != Leaves && result != 0 {
-            targetBody, found := bodyToBodyMap[BodyId(result)]
-            if !found {
-                log.Println("ERROR!!! Unable to find target body corresponding to ",
-                    "session body ", result)
-                numErrors++
-            } else {
-                tracing[location] = TracingResult(targetBody)
-                altered++
-            }
-        }
-    }
-    if numErrors > 0 {
-        log.Fatalln("\nAborting... found ", numErrors, " when converting to target stack")
-    }
-    fmt.Printf("\nTransformed %d of %d body targets in traced PSDs\n",
-        altered, len(tracing))
-    return
+	// Finalize the PSD Tracing by transforming traced session body ids into
+	// target stack body ids using the body->body map.
+	numErrors := 0
+	altered := 0
+	for location, result := range tracing {
+		if result != Orphan && result != Leaves && result != 0 {
+			targetBody, found := bodyToBodyMap[BodyId(result)]
+			if !found {
+				log.Println("ERROR!!! Unable to find target body corresponding to ",
+					"session body ", result)
+				numErrors++
+			} else {
+				tracing[location] = TracingResult(targetBody)
+				altered++
+			}
+		}
+	}
+	if numErrors > 0 {
+		log.Fatalln("\nAborting... found ", numErrors, " when converting to target stack")
+	}
+	fmt.Printf("\nTransformed %d of %d body targets in traced PSDs\n",
+		altered, len(tracing))
+	return
 }
-
 
 // PsdTracings holds the results of agents tracing PSDs.
 type PsdTracings map[Point3d]Tracings
-
-
-
