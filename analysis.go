@@ -173,7 +173,7 @@ func CreatePsdTracing(assignmentJsonFilename string, exportSessionDir string,
 
 	// Determine which bodies in target stack have maximal overlap
 	// with the PSD bodies based on superpixels
-	bodyToBodyMap := targetStack.OverlapAnalysis(bodyToSpMap)
+	bodyToBodyMap := targetStack.OverlapAnalysis(bodyToSpMap, &exportedStack)
 
 	// Finalize the PSD Tracing by transforming traced session body ids into
 	// target stack body ids using the body->body map.

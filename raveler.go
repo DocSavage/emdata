@@ -56,7 +56,64 @@ type Superpixel struct {
 	Label uint32
 }
 
+// SuperpixelBound holds the top left 2d coord, width, height, 
+// and volume (# voxels)
+type SuperpixelBound struct {
+	MinX   int
+	MinY   int
+	Width  int
+	Height int
+	Volume int
+}
+
+// Superpixels is a slice of Superpixel type
 type Superpixels []Superpixel
+
+// SuperpixelBoundMap maps a superpixel to its bounds
+type SuperpixelBoundsMap map[Superpixel]SuperpixelBound
+
+// ReadSuperpixelBounds loads a superpixel bounds file and limits
+// returned superpixels to those in the passed-in superpixelSet.
+// If superpixelSet is empty, then all superpixels are returned.
+func ReadSuperpixelBounds(filename string, superpixelSet map[Superpixel]bool) (
+	spBoundsMap SuperpixelBoundsMap, err error) {
+
+	fmt.Println("Loading superpixel bounds:\n", filename)
+
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Printf("Could not open superpixel bounds: %s\n", filename)
+		return
+	}
+	spBoundsMap = make(SuperpixelBoundsMap)
+	linenum := 0
+	lineReader := bufio.NewReader(file)
+	alwaysSetSuperpixel := len(superpixelSet) == 0
+	for {
+		line, err := lineReader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		linenum++
+		if line[0] == ' ' || line[0] == '#' || line[0] == '\n' {
+			continue
+		}
+		var superpixel Superpixel
+		var bounds SuperpixelBound
+		_, err = fmt.Sscanf(line, "%d %d %d %d %d %d %d",
+			&superpixel.Slice, &superpixel.Label,
+			&bounds.MinX, &bounds.MinY, &bounds.Width, &bounds.Height,
+			&bounds.Volume)
+		if err != nil {
+			log.Printf("ERROR!!! Cannot parse line %d in %s: %s",
+				linenum, filename, err)
+		}
+		if alwaysSetSuperpixel || superpixelSet[superpixel] {
+			spBoundsMap[superpixel] = bounds
+		}
+	}
+	return
+}
 
 // SuperpixelToBodyMap holds Superpixel -> Body Id mappings
 type SuperpixelToBodyMap map[Superpixel]BodyId
@@ -81,6 +138,8 @@ type SuperpixelMapping struct {
 	spToBodyMap     SuperpixelToBodyMap
 	reverseComputed bool
 	bodyToSpMap     BodyToSuperpixelsMap
+	boundsLoaded    bool
+	spBoundsMap     SuperpixelBoundsMap
 }
 
 // Stack is a directory that has a base set of capabilities
@@ -93,6 +152,26 @@ type Stack struct {
 // String returns the path of this stack
 func (stack Stack) String() string {
 	return stack.Directory
+}
+
+// StackSuperpixelBoundsFilename returns the file name of the
+// synapse annotation file for a given stack
+func (stack Stack) StackSuperpixelBoundsFilename() string {
+	return filepath.Join(stack.String(), SuperpixelBoundsFilename)
+}
+
+// ReadSuperpixelBounds sets a stack's superpixel bounds based on
+// the superpixel bounds file in the stack's directory.
+func (stack *Stack) ReadSuperpixelBounds() {
+	if !stack.boundsLoaded {
+		emptySet := map[Superpixel]bool{}
+		var err error
+		stack.spBoundsMap, err = ReadSuperpixelBounds(
+			stack.StackSuperpixelBoundsFilename(), emptySet)
+		if err == nil {
+			stack.boundsLoaded = true
+		}
+	}
 }
 
 // ReadTxtMaps loads superpixel->body maps and computes reverse
@@ -108,7 +187,7 @@ func (stack *Stack) ReadTxtMaps(computeReverse bool) {
 		filename := filepath.Join(stack.String(), SuperpixelToSegmentFilename)
 		file, err := os.Open(filename)
 		if err != nil {
-			log.Fatalf("Could not open %s", filename)
+			log.Fatalf("Could not open %s: %s", filename, err)
 		}
 		linenum := 0
 		lineReader := bufio.NewReader(file)
@@ -196,6 +275,53 @@ func (stack *Stack) BodySuperpixels(useBody map[BodyId]bool) (
 	return bodyToSpMap
 }
 
+// SuperpixelsChanged looks at the superpixel bounds of two stacks
+// for a given set of superpixels and sees if there are any 
+// significant changes in the superpixels.
+func (stack1 *Stack) SuperpixelsChanged(stack2 *Stack,
+	superpixelSet map[Superpixel]bool) bool {
+
+	spBounds1, err1 := ReadSuperpixelBounds(
+		stack1.StackSuperpixelBoundsFilename(), superpixelSet)
+	if err1 != nil {
+		log.Println("** Not able to check if superpixels changed",
+			"since superpixel bounds not available for stack:\n", stack1)
+		return false
+	}
+	spBounds2, err2 := ReadSuperpixelBounds(
+		stack2.StackSuperpixelBoundsFilename(), superpixelSet)
+	if err2 != nil {
+		log.Println("** Not able to check if superpixels changed",
+			"since superpixel bounds not available for stack:\n", stack2)
+		return false
+	}
+
+	voxelsTotal := 0
+	voxelsDiff := 0
+	for superpixel, bounds1 := range spBounds1 {
+		voxelsTotal += bounds1.Volume
+		bounds2, found := spBounds2[superpixel]
+		if !found {
+			voxelsDiff += bounds1.Volume
+		} else {
+			if bounds2.Volume > bounds1.Volume {
+				voxelsDiff += bounds2.Volume - bounds1.Volume
+			} else {
+				voxelsDiff += bounds1.Volume - bounds2.Volume
+			}
+		}
+	}
+	percentDiff := float32(voxelsDiff) / float32(voxelsTotal)
+	log.Printf("\n%5.2f%% voxel difference in superpixels used to compute overlap analysis between stacks\n", percentDiff)
+
+	if percentDiff > 0.10 {
+		log.Fatalln("Error!!  More than 10%% voxel difference in superpixels",
+			"between stacks:", percentDiff*100.0, "%% of total",
+			voxelsTotal, "voxels\n", stack1, "\n", stack2)
+	}
+	return false
+}
+
 // BaseStackDir is a directory path to a base stack that includes
 // all necessary data under one parent directory.
 type BaseStack struct {
@@ -276,25 +402,47 @@ type OverlapsMap map[BodyId]Overlaps
 // OverlapAnalysis returns a body->body mapping where
 // each body in the provided body->superpixel map is matched to
 // a body in this stack that has maximal superpixel overlap.
-func (stack *BaseStack) OverlapAnalysis(bodyToSpMap BodyToSuperpixelsMap) (
-	bodyToBodyMap map[BodyId]BodyId) {
+// Quality control is to check if superpixels have changed a lot
+// from our target stack using superpixel bounds.
+func (stack *BaseStack) OverlapAnalysis(bodyToSpMap BodyToSuperpixelsMap,
+	exportedStack *ExportedStack) (bodyToBodyMap map[BodyId]BodyId) {
 
-	if !stack.mapLoaded {
-		stack.ReadTxtMaps(false)
-	}
+	stack.ReadTxtMaps(false)
 	overlapsMap := make(OverlapsMap)
 
+	superpixelSet := make(map[Superpixel]bool) // Set of used superpixels
+
 	// Go through all superpixels in the provided map and track overlap.
+	superpixelsFound := 0
 	for bodyId, superpixels := range bodyToSpMap {
 		for _, superpixel := range superpixels {
 			myBodyId, found := stack.spToBodyMap[superpixel]
 			if found {
+				superpixelSet[superpixel] = true
 				if len(overlapsMap[bodyId]) == 0 {
 					overlapsMap[bodyId] = make(Overlaps)
 				}
 				overlapsMap[bodyId][myBodyId] += 1
+				superpixelsFound++
+			} else {
+				log.Println("Warning!! Superpixel ", superpixel,
+					" in traced body is not in target stack (",
+					filepath.Base(stack.String()), ")")
 			}
 		}
+	}
+	if superpixelsFound != len(superpixelSet) {
+		log.Println("\nOverlap analysis: ", superpixelsFound, " of ",
+			len(superpixelSet), " superpixels found in target stack (",
+			filepath.Base(stack.String()), ")")
+	}
+
+	// Quality control: make sure superpixels have not changed a lot
+	// from our target stack, else superpixel overlap fails.
+	if stack.SuperpixelsChanged(&(exportedStack.Stack), superpixelSet) {
+		log.Fatalln("\n*** ERROR: Superpixels changed significantly ",
+			"between exported stack (", filepath.Base(exportedStack.String()),
+			") and target stack (", filepath.Base(stack.String()), ")")
 	}
 
 	bodyToBodyMap = make(map[BodyId]BodyId)
