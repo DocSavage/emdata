@@ -32,13 +32,26 @@
 package emdata
 
 import (
-	"encoding/json"
+	"path/filepath"
 	"io"
+	"encoding/json"
 	"log"
 	"os"
     "regexp"
-	"path/filepath"
+	"time"
+	"os/user"
 )
+
+func CreateMetadata(description string) (metadata map[string]interface{}) {
+	user, _ := user.Current()
+	metadata = make(map[string]interface{})
+	metadata["username"] = user.Username
+	metadata["date"] = time.Now().Format("02-January-2006 15:04")
+	metadata["computer"], _ = os.Hostname()
+	metadata["software"] = os.Args[0]
+	metadata["description"] = description
+	return
+}
 
 const (
 	JsonSynapseFilename  = "annotations-synapse.json"
@@ -202,5 +215,22 @@ func ReadPsdBodyMap(stack JsonStack) LocationToBodyMap {
 		}
 	}
 	return psdToBodyMap
+}
+
+// JsonPsdTracings is the high-level structure corresponding to
+// a PSD Tracings JSON file
+type JsonPsdTracings struct {
+    Metadata map[string]interface{}  `json:"metadata"`
+	Data []JsonPsdTracing `json:"data"`	
+}
+
+type JsonPsdTracing struct {
+	Location Point3d `json:"location"`
+	Tracings []JsonAgentTracing `json:"tracings"`
+}
+
+type JsonAgentTracing struct {
+    Agent  string `json:"agent ID"`
+    Result string `json:"result"`
 }
 
