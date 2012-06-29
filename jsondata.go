@@ -32,14 +32,14 @@
 package emdata
 
 import (
-	"path/filepath"
-	"io"
 	"encoding/json"
+	"io"
 	"log"
 	"os"
-    "regexp"
-	"time"
 	"os/user"
+	"path/filepath"
+	"regexp"
+	"time"
 )
 
 func CreateMetadata(description string) (metadata map[string]interface{}) {
@@ -220,17 +220,16 @@ func ReadPsdBodyMap(stack JsonStack) LocationToBodyMap {
 // JsonPsdTracings is the high-level structure corresponding to
 // a PSD Tracings JSON file
 type JsonPsdTracings struct {
-    Metadata map[string]interface{}  `json:"metadata"`
-	Data []JsonPsdTracing `json:"data"`	
+	Metadata map[string]interface{} `json:"metadata"`
+	Data     []JsonPsdTracing       `json:"data"`
 }
 
 type JsonPsdTracing struct {
-	Location Point3d `json:"location"`
+	Location Point3d            `json:"location"`
 	Tracings []JsonAgentTracing `json:"tracings"`
 }
 
 type JsonAgentTracing struct {
-    Agent  string `json:"agent ID"`
-    Result string `json:"result"`
+	Agent  string `json:"agent ID"`
+	Result string `json:"result"`
 }
-

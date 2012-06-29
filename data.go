@@ -42,6 +42,9 @@ import (
 // non-unique conditions using the same value, e.g., orphan or leaves.
 type BodyId int64
 
+// BodySet is a set of body IDs.
+type BodySet map[BodyId]bool
+
 // VoxelCoord holds a coordinate for a voxel.
 type VoxelCoord uint32
 
@@ -109,4 +112,3 @@ func (bounds Bounds3d) Include(pt Point3d) bool {
 	}
 	return true
 }
-

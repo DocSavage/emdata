@@ -32,8 +32,8 @@
 package emdata
 
 import (
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	//    "os"
@@ -70,44 +70,10 @@ type Tracings map[TracingAgent]TracingResult
 // PsdTracing holds the results of a single agent tracing PSDs.
 type PsdTracing map[Point3d]TracingResult
 
-func (tracing PsdTracing) WriteJson(writer io.Writer, agent TracingAgent) {
-
-	enc := json.NewEncoder(writer)
-
-	var trace JsonAgentTracing
-	trace.Agent = string(agent)
-
-	var jsonTracings JsonPsdTracings
-	jsonTracings.Metadata = CreateMetadata("PSD Tracing")
-	jsonTracings.Data = make([]JsonPsdTracing, len(tracing))
-	i := 0
-	for location, result := range tracing {
-		jsonTracings.Data[i].Location = location
-		trace.Result = result.String()
-		jsonTracings.Data[i].Tracings = []JsonAgentTracing{trace}
-		i++
-	}
-	if err := enc.Encode(&jsonTracings); err != nil {
-		log.Fatalf("Could not encode PSD tracing: %s", err)
-	}
-}
-
-// CreatePsdTracing creates a PsdTracing struct by transforming assignment tracings
-// from one stack to another, assuming that watersheds are mostly preserved and
-// using maximal watershed overlap to determine equivalence among bodies.
-func CreatePsdTracing(assignmentJsonFilename string, exportSessionDir string,
-	baseStackDir string, targetStackDir string) (tracing PsdTracing) {
-
-	// Set these directories to appropriate Raveler stack types.
-	var baseStack BaseStack
-	baseStack.Directory = baseStackDir
-
-	var exportedStack ExportedStack
-	exportedStack.Directory = exportSessionDir
-	exportedStack.Base = baseStack
-
-	var targetStack BaseStack
-	targetStack.Directory = targetStackDir
+// CreatePsdTracing creates a PsdTracing struct by examining each assigned
+// location and determining the exported body ID of the stack for that location.
+func CreatePsdTracing(assignmentJsonFilename string, exportedStack ExportedStack) (
+	tracing PsdTracing, psdBodies BodySet) {
 
 	// Read in the assignment JSON: set of PSDs
 	assignment := ReadSynapsesJson(assignmentJsonFilename)
@@ -126,7 +92,7 @@ func CreatePsdTracing(assignmentJsonFilename string, exportSessionDir string,
 	presumedLeaves := 0
 	noBodyAnnotated := 0
 	tracing = make(PsdTracing)
-	psdBodies := make(map[BodyId]bool) // Set of PSD bodies
+	psdBodies = make(BodySet) // Set of PSD bodies
 
 	for _, synapse := range assignment.Data {
 		for _, psd := range synapse.Psds {
@@ -166,38 +132,56 @@ func CreatePsdTracing(assignmentJsonFilename string, exportSessionDir string,
 	if noBodyAnnotated > 0 {
 		fmt.Println("\n*** PSD bodies not annotated: ", noBodyAnnotated)
 	}
+	return
+}
 
-	// For each PSD body, determine the exported session superpixels
-	// within that body.
-	bodyToSpMap := exportedStack.BodySuperpixels(psdBodies)
+func (tracing PsdTracing) WriteJson(writer io.Writer, agent TracingAgent) {
+	enc := json.NewEncoder(writer)
 
-	// Determine which bodies in target stack have maximal overlap
-	// with the PSD bodies based on superpixels
-	bodyToBodyMap := targetStack.OverlapAnalysis(bodyToSpMap, &exportedStack)
+	var trace JsonAgentTracing
+	trace.Agent = string(agent)
 
-	// Finalize the PSD Tracing by transforming traced session body ids into
-	// target stack body ids using the body->body map.
+	var jsonTracings JsonPsdTracings
+	jsonTracings.Metadata = CreateMetadata("PSD Tracing")
+	jsonTracings.Data = make([]JsonPsdTracing, len(tracing))
+	i := 0
+	for location, result := range tracing {
+		jsonTracings.Data[i].Location = location
+		trace.Result = result.String()
+		jsonTracings.Data[i].Tracings = []JsonAgentTracing{trace}
+		i++
+	}
+	if err := enc.Encode(&jsonTracings); err != nil {
+		log.Fatalf("Could not encode PSD tracing: %s", err)
+	}
+}
+
+// TransformBodies applies a body->body map to transform any traced bodies.
+func (tracing *PsdTracing) TransformBodies(bodyToBodyMap map[BodyId]BodyId) {
 	numErrors := 0
 	altered := 0
-	for location, result := range tracing {
+	unaltered := 0
+	for location, result := range *tracing {
 		if result != Orphan && result != Leaves && result != 0 {
-			targetBody, found := bodyToBodyMap[BodyId(result)]
+			origBody := BodyId(result)
+			targetBody, found := bodyToBodyMap[origBody]
 			if !found {
-				log.Println("ERROR!!! Unable to find target body corresponding to ",
-					"session body ", result)
+				log.Println("ERROR!!! Body->body map does not contain PSD",
+					"body ", result)
 				numErrors++
-			} else {
-				tracing[location] = TracingResult(targetBody)
+			} else if origBody != targetBody {
+				(*tracing)[location] = TracingResult(targetBody)
 				altered++
+			} else {
+				unaltered++
 			}
 		}
 	}
 	if numErrors > 0 {
-		log.Fatalln("\nAborting... found ", numErrors, " when converting to target stack")
+		log.Fatalln("\nAborting... found ", numErrors,
+			" when transforming PSD bodies.")
 	}
-	fmt.Printf("\nTransformed %d of %d body targets in traced PSDs\n",
-		altered, len(tracing))
-	return
+	fmt.Printf("\nTransformed %d of %d PSD bodies\n", altered, altered+unaltered)
 }
 
 // PsdTracings holds the results of agents tracing PSDs.

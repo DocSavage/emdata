@@ -89,11 +89,9 @@ func ReadSuperpixelTile(stack TiledJsonStack, relTilePath string) (
 }
 
 type TiledJsonStack interface {
-	String() string
 	TilesMetadata() (Bounds3d, SuperpixelFormat)
 	JsonStack
-	ReadTxtMaps(bool)
-	SuperpixelToBody(Superpixel) BodyId
+	MappedStack
 }
 
 // TileFilename returns the path to a given tile relative to a stack root.
@@ -120,9 +118,6 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
 		log.Fatalf("PSD falls outside stack boundaries: %s > %s",
 			pt, bounds)
 	}
-
-	// Read superpixel->body maps if needed.  No reverse maps needed.
-	stack.ReadTxtMaps(false)
 
 	// Compute which tile this point falls within
 	x := int(pt.X())
