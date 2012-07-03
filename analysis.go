@@ -32,11 +32,10 @@
 package emdata
 
 import (
-	"encoding/json"
-	"fmt"
+	"bytes"
 	"io"
+	"encoding/json"
 	"log"
-	//    "os"
 	"strconv"
 )
 
@@ -77,12 +76,12 @@ func CreatePsdTracing(assignmentJsonFilename string, exportedStack ExportedStack
 
 	// Read in the assignment JSON: set of PSDs
 	assignment := ReadSynapsesJson(assignmentJsonFilename)
-	fmt.Println("Read assignment Json:", len(assignment.Data), "synapses")
+	log.Println("Read assignment Json:", len(assignment.Data), "synapses")
 
 	// Read in the exported body annotations to determine whether PSD was
 	// traced to anchor body or it was orphan/leaves.
 	bodyToNotesMap := ReadStackBodyAnnotations(exportedStack)
-	fmt.Println("Read exported bodies Json:", len(bodyToNotesMap), "bodies")
+	log.Println("Read exported bodies Json:", len(bodyToNotesMap), "bodies")
 
 	// For each PSD, find body associated with it using superpixel tiles
 	// and the exported session's map.
@@ -118,25 +117,25 @@ func CreatePsdTracing(assignmentJsonFilename string, exportedStack ExportedStack
 				tracing[psd.Location] = tracingResult
 			} else {
 				noBodyAnnotated++
-				fmt.Println("WARNING!!! PSD ", psd.Location, " -> ",
+				log.Println("WARNING!!! PSD ", psd.Location, " -> ",
 					"exported body ", bodyId, " cannot be found in ",
 					"body annotation file for exported stack... skipping")
 			}
 		}
 	}
 
-	fmt.Println("  Anchors marked with anchor tag: ", definitiveAnchor)
-	fmt.Println(" Anchors detected within comment: ", commentedAnchor)
-	fmt.Println(" Orphans detected within comment: ", commentedOrphan)
-	fmt.Println("PSD bodies with no anchor/orphan: ", presumedLeaves)
+	log.Println("  Anchors marked with anchor tag: ", definitiveAnchor)
+	log.Println(" Anchors detected within comment: ", commentedAnchor)
+	log.Println(" Orphans detected within comment: ", commentedOrphan)
+	log.Println("PSD bodies with no anchor/orphan: ", presumedLeaves)
 	if noBodyAnnotated > 0 {
-		fmt.Println("\n*** PSD bodies not annotated: ", noBodyAnnotated)
+		log.Println("\n*** PSD bodies not annotated: ", noBodyAnnotated)
 	}
 	return
 }
 
 func (tracing PsdTracing) WriteJson(writer io.Writer, agent TracingAgent) {
-	enc := json.NewEncoder(writer)
+	/* enc := json.NewEncoder(writer)*/
 
 	var trace JsonAgentTracing
 	trace.Agent = string(agent)
@@ -151,9 +150,15 @@ func (tracing PsdTracing) WriteJson(writer io.Writer, agent TracingAgent) {
 		jsonTracings.Data[i].Tracings = []JsonAgentTracing{trace}
 		i++
 	}
-	if err := enc.Encode(&jsonTracings); err != nil {
-		log.Fatalf("Could not encode PSD tracing: %s", err)
-	}
+	m, _ := json.Marshal(jsonTracings)
+	var buf bytes.Buffer
+	json.Indent(&buf, m, "", "    ")
+	buf.WriteTo(writer)
+	/*
+		if err := enc.Encode(&jsonTracings); err != nil {
+			log.Fatalf("Could not encode PSD tracing: %s", err)
+		}
+	*/
 }
 
 // TransformBodies applies a body->body map to transform any traced bodies.
@@ -181,7 +186,7 @@ func (tracing *PsdTracing) TransformBodies(bodyToBodyMap map[BodyId]BodyId) {
 		log.Fatalln("\nAborting... found ", numErrors,
 			" when transforming PSD bodies.")
 	}
-	fmt.Printf("\nTransformed %d of %d PSD bodies\n", altered, altered+unaltered)
+	log.Printf("\nTransformed %d of %d PSD bodies\n", altered, altered+unaltered)
 }
 
 // PsdTracings holds the results of agents tracing PSDs.

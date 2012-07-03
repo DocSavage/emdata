@@ -146,7 +146,7 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
 	}
 
 	if superpixel.Label == 0 {
-		fmt.Println("WARNING: PSD falls in ZERO SUPERPIXEL: ", pt)
+		log.Println("WARNING: PSD falls in ZERO SUPERPIXEL: ", pt)
 		return BodyId(0)
 	}
 	bodyId := stack.SuperpixelToBody(superpixel)

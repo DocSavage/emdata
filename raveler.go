@@ -78,7 +78,7 @@ type SuperpixelBoundsMap map[Superpixel]SuperpixelBound
 func ReadSuperpixelBounds(filename string, superpixelSet map[Superpixel]bool) (
 	spBoundsMap SuperpixelBoundsMap, err error) {
 
-	fmt.Println("Loading superpixel bounds:\n", filename)
+	log.Println("Loading superpixel bounds:\n", filename)
 
 	file, err := os.Open(filename)
 	if err != nil {
@@ -135,7 +135,7 @@ const (
 // ReadTxtMaps reads superpixel->segment and segment->body map
 // .txt files from a stack directory and returns a superpixel->body map.
 func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
-	fmt.Println("Loading superpixel->segment->body maps for stack:\n",
+	log.Println("Loading superpixel->segment->body maps for stack:\n",
 		stackPath)
 	spToBodyMap = make(SuperpixelToBodyMap)
 
@@ -194,7 +194,7 @@ func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
 	for superpixel, segment := range spToBodyMap {
 		spToBodyMap[superpixel] = segmentToBodyMap[segment]
 	}
-	fmt.Println("Maps loaded.")
+	log.Println("Maps loaded.")
 	return
 }
 
@@ -439,28 +439,26 @@ func OverlapAnalysis(stack1 MappedStack, stack2 MappedStack, bodySet BodySet) (
 
 	// Go through all superpixels in the body set and track overlap.
 	overlapsMap := make(OverlapsMap)
-	superpixelSet := make(map[Superpixel]bool) // Set of used superpixels
 	superpixelsFound := 0
+	superpixelsNotFound := 0
 	for bodyId1, superpixels1 := range body1ToSpMap {
 		for _, superpixel1 := range superpixels1 {
 			bodyId2, found := sp2ToBodyMap[superpixel1]
 			if found {
-				superpixelSet[superpixel1] = true
 				if len(overlapsMap[bodyId1]) == 0 {
 					overlapsMap[bodyId1] = make(Overlaps)
 				}
 				overlapsMap[bodyId1][bodyId2] += 1
 				superpixelsFound++
 			} else {
-				log.Println("Warning!! Superpixel ", superpixel1,
-					" in traced body is not in target stack (",
-					filepath.Base(stack2.String()), ")")
+				superpixelsNotFound++
 			}
 		}
 	}
-	if superpixelsFound != len(superpixelSet) {
+	if superpixelsNotFound > 0 {
+		total := superpixelsNotFound + superpixelsFound
 		log.Println("\nOverlap analysis: ", superpixelsFound, " of ",
-			len(superpixelSet), " superpixels found in target stack (",
+			total, " superpixels found in target stack (",
 			filepath.Base(stack2.String()), ")")
 	}
 
@@ -486,7 +484,7 @@ func OverlapAnalysis(stack1 MappedStack, stack2 MappedStack, bodySet BodySet) (
 			}
 		}
 		if matchedBodyId == 0 {
-			fmt.Println("Warning!! Could not find overlapping body ",
+			log.Println("Warning!! Could not find overlapping body ",
 				"for body ", bodyId1)
 		}
 		bodyToBodyMap[bodyId1] = matchedBodyId
