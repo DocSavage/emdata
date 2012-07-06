@@ -133,8 +133,9 @@ var proofreadingExports = [2]AssignmentMapping{
 		"lauchies":  {30, []int{}},
 		"ogundeyio": {49, []int{}},
 		"saundersm": {49, []int{}},
-		"shapirov": {49, []int{1, 2, 3, 5, 8, 9, 13, 14, 15, 16, 17, 18, 28, 29, 31,
-			32, 33, 34, 37, 38, 39, 40, 41, 42, 45, 46, 47, 48}},
+		"shapirov": {49, []int{1, 2, 3, 5, 8, 9, 13, 14, 15, 16,
+			17, 18, 28, 29, 31, 32, 33, 34, 37, 38, 39, 40, 41,
+			42, 45, 46, 47, 48}},
 		"sigmundc":   {48, []int{1, 2, 6, 8, 9}},
 		"takemurasa": {48, []int{1, 2, 3, 4, 5, 6}},
 	},
@@ -178,7 +179,7 @@ func BaseStackDir(location SubstackLocation) (dir string) {
 func AssignmentExportDir(location SubstackLocation, userid string,
 	setnum int) (dir string) {
 
-	fmt.Sprintf(dir, "%s.synapse%d", userid, setnum)
+	dir = fmt.Sprintf("%s.synapse%d", userid, setnum)
 	switch location {
 	case Distal:
 		dir = filepath.Join(DistalExportDir, dir)
@@ -196,7 +197,7 @@ func AssignmentExportDir(location SubstackLocation, userid string,
 func AssignmentJsonFilename(location SubstackLocation, userid string,
 	setnum int) (filename string) {
 
-	fmt.Sprintf(filename,
+	filename = fmt.Sprintf(
 		"proofreader_assignments_%d/assigned-synapses-%s.json",
 		setnum, userid)
 	switch location {
