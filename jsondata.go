@@ -32,6 +32,7 @@
 package emdata
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log"
@@ -122,22 +123,39 @@ type JsonSynapses struct {
 	Data     []JsonSynapse `json:"data,omitempty"`
 }
 
+// WriteJson writes indented JSON synapse annotation list to writer
+func (synapses JsonSynapses) WriteJson(writer io.Writer) {
+	m, _ := json.Marshal(synapses)
+	var buf bytes.Buffer
+	json.Indent(&buf, m, "", "    ")
+	buf.WriteTo(writer)
+}
+
+// JsonSynapse holds a T-bar and associated PSDs (partners)
 type JsonSynapse struct {
 	Tbar JsonTbar  `json:"T-bar"`
 	Psds []JsonPsd `json:"partners"`
 }
 
+// JsonTbar holds various T-bar attributes including a uid and
+// assignment useful for analysis and tracking synapses through
+// transformations.
 type JsonTbar struct {
 	Location   Point3d `json:"location"`
 	Body       BodyId  `json:"body ID"`
 	Status     string  `json:"status,omitempty"`
 	Confidence float32 `json:"confidence,omitempty"`
+	Uid        string  `json:"uid,omitempty"`
+	Assignment string  `json:"assignment,omitempty"`
 }
 
+// JsonPsd holds information for a post-synaptic density (PSD),
+// including the tracing results for various proofreading agents.
 type JsonPsd struct {
-	Location   Point3d `json:"location"`
-	Body       BodyId  `json:"body ID"`
-	Confidence float32 `json:"confidence,omitempty"`
+	Location   Point3d                  `json:"location"`
+	Body       BodyId                   `json:"body ID"`
+	Confidence float32                  `json:"confidence,omitempty"`
+	Tracings   map[string]TracingResult `json:"tracings"`
 }
 
 // StackSynapsesJsonFilename returns the file name of the
@@ -215,21 +233,4 @@ func ReadPsdBodyMap(stack JsonStack) LocationToBodyMap {
 		}
 	}
 	return psdToBodyMap
-}
-
-// JsonPsdTracings is the high-level structure corresponding to
-// a PSD Tracings JSON file
-type JsonPsdTracings struct {
-	Metadata map[string]interface{} `json:"metadata"`
-	Data     []JsonPsdTracing       `json:"data"`
-}
-
-type JsonPsdTracing struct {
-	Location Point3d            `json:"location"`
-	Tracings []JsonAgentTracing `json:"tracings"`
-}
-
-type JsonAgentTracing struct {
-	Agent  string `json:"agent ID"`
-	Result string `json:"result"`
 }

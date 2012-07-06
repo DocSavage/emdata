@@ -32,9 +32,7 @@
 package emdata
 
 import (
-	"bytes"
-	"io"
-	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 )
@@ -63,20 +61,15 @@ func (result TracingResult) String() string {
 // TracingAgent is a unique id that describes a proofreading agent.
 type TracingAgent string
 
-// Tracings holds the results of agents.
-type Tracings map[TracingAgent]TracingResult
-
-// PsdTracing holds the results of a single agent tracing PSDs.
-type PsdTracing map[Point3d]TracingResult
-
 // CreatePsdTracing creates a PsdTracing struct by examining each assigned
 // location and determining the exported body ID of the stack for that location.
-func CreatePsdTracing(assignmentJsonFilename string, exportedStack ExportedStack) (
-	tracing PsdTracing, psdBodies BodySet) {
+func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
+	exportedStack ExportedStack) (tracing *JsonSynapses, psdBodies BodySet) {
 
 	// Read in the assignment JSON: set of PSDs
-	assignment := ReadSynapsesJson(assignmentJsonFilename)
-	log.Println("Read assignment Json:", len(assignment.Data), "synapses")
+	jsonFilename := AssignmentJsonFilename(location, userid, setnum)
+	tracing = ReadSynapsesJson(jsonFilename)
+	log.Println("Read assignment Json:", len(tracing.Data), "synapses")
 
 	// Read in the exported body annotations to determine whether PSD was
 	// traced to anchor body or it was orphan/leaves.
@@ -90,12 +83,15 @@ func CreatePsdTracing(assignmentJsonFilename string, exportedStack ExportedStack
 	commentedOrphan := 0
 	presumedLeaves := 0
 	noBodyAnnotated := 0
-	tracing = make(PsdTracing)
 	psdBodies = make(BodySet) // Set of PSD bodies
 
-	for _, synapse := range assignment.Data {
-		for _, psd := range synapse.Psds {
-			bodyId := GetBodyOfLocation(&exportedStack, psd.Location)
+	synapses := (*tracing).Data
+	for s, _ := range synapses {
+		synapses[s].Tbar.Assignment = fmt.Sprintf("%s-%d",
+			SubstackDescription[location], setnum)
+		psds := synapses[s].Psds
+		for p, _ := range psds {
+			bodyId := GetBodyOfLocation(&exportedStack, psds[p].Location)
 			bodyNote, found := bodyToNotesMap[bodyId]
 			if found {
 				var tracingResult TracingResult
@@ -114,10 +110,13 @@ func CreatePsdTracing(assignmentJsonFilename string, exportedStack ExportedStack
 					presumedLeaves++
 					tracingResult = Leaves
 				}
-				tracing[psd.Location] = tracingResult
+				if len(psds[p].Tracings) == 0 {
+					psds[p].Tracings = make(map[string]TracingResult)
+				}
+				psds[p].Tracings[userid] = tracingResult
 			} else {
 				noBodyAnnotated++
-				log.Println("WARNING!!! PSD ", psd.Location, " -> ",
+				log.Println("WARNING!!! PSD ", psds[p].Location, " -> ",
 					"exported body ", bodyId, " cannot be found in ",
 					"body annotation file for exported stack... skipping")
 			}
@@ -129,64 +128,114 @@ func CreatePsdTracing(assignmentJsonFilename string, exportedStack ExportedStack
 	log.Println(" Orphans detected within comment: ", commentedOrphan)
 	log.Println("PSD bodies with no anchor/orphan: ", presumedLeaves)
 	if noBodyAnnotated > 0 {
-		log.Println("\n*** PSD bodies not annotated: ", noBodyAnnotated)
+		log.Println("*** PSD bodies not annotated: ", noBodyAnnotated)
 	}
 	return
 }
 
-func (tracing PsdTracing) WriteJson(writer io.Writer, agent TracingAgent) {
-	var trace JsonAgentTracing
-	trace.Agent = string(agent)
-
-	var jsonTracings JsonPsdTracings
-	jsonTracings.Metadata = CreateMetadata("PSD Tracing")
-	jsonTracings.Data = make([]JsonPsdTracing, len(tracing))
-	i := 0
-	for location, result := range tracing {
-		jsonTracings.Data[i].Location = location
-		trace.Result = result.String()
-		jsonTracings.Data[i].Tracings = []JsonAgentTracing{trace}
-		i++
-	}
-	m, _ := json.Marshal(jsonTracings)
-	var buf bytes.Buffer
-	json.Indent(&buf, m, "", "    ")
-	buf.WriteTo(writer)
-}
-
 // TransformBodies applies a body->body map to transform any traced bodies.
-func (tracing *PsdTracing) TransformBodies(bodyToBodyMap map[BodyId]BodyId) (
+func (tracing *JsonSynapses) TransformBodies(bodyToBodyMap map[BodyId]BodyId) (
 	psdBodies BodySet) {
 
 	psdBodies = make(BodySet)
 	numErrors := 0
 	altered := 0
 	unaltered := 0
-	for location, result := range *tracing {
-		if result != Orphan && result != Leaves && result != 0 {
-			origBody := BodyId(result)
-			targetBody, found := bodyToBodyMap[origBody]
-			if !found {
-				log.Println("ERROR!!! Body->body map does not contain PSD",
-					"body ", result)
-				numErrors++
-			} else if origBody != targetBody {
-				(*tracing)[location] = TracingResult(targetBody)
-				psdBodies[targetBody] = true
-				altered++
-			} else {
-				psdBodies[origBody] = true
-				unaltered++
+	synapses := (*tracing).Data
+	for s, _ := range synapses {
+		psds := synapses[s].Psds
+		for p, _ := range psds {
+			for userid, result := range psds[p].Tracings {
+				if result != Orphan && result != Leaves && result != 0 {
+					origBody := BodyId(result)
+					targetBody, found := bodyToBodyMap[origBody]
+					if !found {
+						log.Println("ERROR!!! Body->body map does not contain",
+							"PSD body ", result)
+						numErrors++
+					} else if origBody != targetBody {
+						psds[p].Tracings[userid] = TracingResult(targetBody)
+						psdBodies[targetBody] = true
+						altered++
+					} else {
+						psdBodies[origBody] = true
+						unaltered++
+					}
+				}
 			}
 		}
 	}
+
 	if numErrors > 0 {
-		log.Fatalln("\nAborting... found ", numErrors,
+		log.Fatalln("Aborting... found ", numErrors,
 			" when transforming PSD bodies.")
 	}
-	log.Printf("\nTransformed %d of %d PSD bodies\n", altered, altered+unaltered)
+	log.Printf("Transformed %d of %d PSD bodies\n", altered, altered+unaltered)
 	return
 }
 
-// PsdTracings holds the results of agents tracing PSDs.
-type PsdTracings map[Point3d]Tracings
+// TransformSynapses modifies synapse locations (T-bar and PSDs) based
+// on a transformed synapses annotation list with 'uid' tags and PSDs that
+// have matching body IDs
+func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
+
+	// Construct a lookup map based on 'uid' tag that points to synapse #
+	// in the xformed list
+	uidMap := make(map[string]int)
+	for i, synapse := range xformed.Data {
+		uidMap[synapse.Tbar.Uid] = i
+	}
+
+	// Go through each traced synapse and match it to associated xformed
+	// T-bar or PSD.
+	numErrors := 0
+	alteredPsds := 0
+	alteredTbar := 0
+	synapses := (*tracing).Data
+	for s, _ := range synapses {
+		// Alter T-bar location
+		var uid string
+		if synapses[s].Tbar.Uid == "" {
+			x, y, z := synapses[s].Tbar.Location.XYZ()
+			uid = fmt.Sprintf("%05d-%05d-%05d", x, y, z)
+		} else {
+			uid = synapses[s].Tbar.Uid
+		}
+		i, found := uidMap[uid]
+		if !found {
+			numErrors++
+			log.Printf("** Could not find uid %s with xformed synapse list!\n",
+				uid)
+		} else {
+			synapses[s].Tbar.Location = xformed.Data[i].Tbar.Location
+			alteredTbar++
+
+			// Alter PSD locations using body ID
+			xformedPsds := xformed.Data[i].Psds
+			psdBodies := make(map[BodyId]int)
+			for p, _ := range xformedPsds {
+				psdBodies[xformedPsds[i].Body] = p
+			}
+			psds := synapses[s].Psds
+			for p, _ := range psds {
+				j, found := psdBodies[psds[p].Body]
+				if !found {
+					numErrors++
+					log.Printf("** Found no match for PSD %s (body %d) tbar %s\n",
+						psds[p].Location.String(), psds[p].Body, uid)
+				} else {
+					alteredPsds++
+					psds[p].Location = xformedPsds[j].Location
+				}
+			}
+		}
+	}
+
+	if numErrors > 0 {
+		log.Fatalln("Aborting... found ", numErrors,
+			" when transforming synapse locations.")
+	}
+	log.Printf("Transformed locations of %d T-bars and %d PSDs\n",
+		alteredTbar, alteredPsds)
+	return
+}

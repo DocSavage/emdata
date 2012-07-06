@@ -45,6 +45,12 @@ const (
 	Unknown  SubstackLocation = iota
 )
 
+var SubstackDescription = []string{
+	"Distal",
+	"Proximal",
+	"Unknown",
+}
+
 // GetSubstackLocation returns a SubstackLocation given a string
 // description: "Distal" or "Proximal"
 func GetSubstackLocation(location string) SubstackLocation {

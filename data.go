@@ -82,6 +82,11 @@ func (pt Point3d) Z() VoxelCoord {
 	return pt[2]
 }
 
+// XYZ returns X, Y, and Z coordinates
+func (pt Point3d) XYZ() (VoxelCoord, VoxelCoord, VoxelCoord) {
+	return pt[0], pt[1], pt[2]
+}
+
 // String returns representation like "(1,2,3)"
 func (pt Point3d) String() string {
 	return "(" + pt[0].String() + "," + pt[1].String() + "," +
