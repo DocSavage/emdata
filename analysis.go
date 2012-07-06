@@ -135,8 +135,6 @@ func CreatePsdTracing(assignmentJsonFilename string, exportedStack ExportedStack
 }
 
 func (tracing PsdTracing) WriteJson(writer io.Writer, agent TracingAgent) {
-	/* enc := json.NewEncoder(writer)*/
-
 	var trace JsonAgentTracing
 	trace.Agent = string(agent)
 
@@ -154,15 +152,13 @@ func (tracing PsdTracing) WriteJson(writer io.Writer, agent TracingAgent) {
 	var buf bytes.Buffer
 	json.Indent(&buf, m, "", "    ")
 	buf.WriteTo(writer)
-	/*
-		if err := enc.Encode(&jsonTracings); err != nil {
-			log.Fatalf("Could not encode PSD tracing: %s", err)
-		}
-	*/
 }
 
 // TransformBodies applies a body->body map to transform any traced bodies.
-func (tracing *PsdTracing) TransformBodies(bodyToBodyMap map[BodyId]BodyId) {
+func (tracing *PsdTracing) TransformBodies(bodyToBodyMap map[BodyId]BodyId) (
+	psdBodies BodySet) {
+
+	psdBodies = make(BodySet)
 	numErrors := 0
 	altered := 0
 	unaltered := 0
@@ -176,8 +172,10 @@ func (tracing *PsdTracing) TransformBodies(bodyToBodyMap map[BodyId]BodyId) {
 				numErrors++
 			} else if origBody != targetBody {
 				(*tracing)[location] = TracingResult(targetBody)
+				psdBodies[targetBody] = true
 				altered++
 			} else {
+				psdBodies[origBody] = true
 				unaltered++
 			}
 		}
@@ -187,6 +185,7 @@ func (tracing *PsdTracing) TransformBodies(bodyToBodyMap map[BodyId]BodyId) {
 			" when transforming PSD bodies.")
 	}
 	log.Printf("\nTransformed %d of %d PSD bodies\n", altered, altered+unaltered)
+	return
 }
 
 // PsdTracings holds the results of agents tracing PSDs.
