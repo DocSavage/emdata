@@ -174,6 +174,15 @@ func (tracing *JsonSynapses) TransformBodies(bodyToBodyMap map[BodyId]BodyId) (
 	return
 }
 
+type PsdSignature struct {
+	Body BodyId
+	Z    VoxelCoord
+}
+
+func (signature PsdSignature) String() string {
+	return fmt.Sprintf("{ Body: %d, Z: %d }", signature.Body, signature.Z)
+}
+
 // TransformSynapses modifies synapse locations (T-bar and PSDs) based
 // on a transformed synapses annotation list with 'uid' tags and PSDs that
 // have matching body IDs
@@ -188,7 +197,8 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 
 	// Go through each traced synapse and match it to associated xformed
 	// T-bar or PSD.
-	numErrors := 0
+	numPsdErrors := 0
+	numTbarErrors := 0
 	alteredPsds := 0
 	alteredTbar := 0
 	synapses := (*tracing).Data
@@ -198,44 +208,62 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 		if synapses[s].Tbar.Uid == "" {
 			x, y, z := synapses[s].Tbar.Location.XYZ()
 			uid = fmt.Sprintf("%05d-%05d-%05d", x, y, z)
+			synapses[s].Tbar.Uid = uid
 		} else {
 			uid = synapses[s].Tbar.Uid
 		}
 		i, found := uidMap[uid]
 		if !found {
-			numErrors++
+			numTbarErrors++
 			log.Printf("** Could not find uid %s with xformed synapse list!\n",
 				uid)
 		} else {
 			synapses[s].Tbar.Location = xformed.Data[i].Tbar.Location
 			alteredTbar++
 
-			// Alter PSD locations using body ID
+			// Alter PSD locations using (body ID, Z coord) signature
+			// of transformed synapses.  In cases where we can't resolve
+			// two PSDs, emit a warning and just choose PSDs in order.
 			xformedPsds := xformed.Data[i].Psds
-			psdBodies := make(map[BodyId]int)
+			psdBodies := make(map[PsdSignature]([]int))
 			for p, _ := range xformedPsds {
-				psdBodies[xformedPsds[i].Body] = p
+				signature := PsdSignature{xformedPsds[p].Body,
+					xformedPsds[p].Location.Z()}
+				_, found := psdBodies[signature]
+				if found {
+					log.Printf("-- Duplicate PSD signature for %s: %s",
+						uid, signature)
+					psdBodies[signature] = append(psdBodies[signature], p)
+				} else {
+					psdBodies[signature] = make([]int, 1)
+					psdBodies[signature][0] = p
+				}
 			}
 			psds := synapses[s].Psds
 			for p, _ := range psds {
-				j, found := psdBodies[psds[p].Body]
+				signature := PsdSignature{psds[p].Body, psds[p].Location.Z()}
+				_, found := psdBodies[signature]
 				if !found {
-					numErrors++
+					numPsdErrors++
 					log.Printf("** Found no match for PSD %s (body %d) tbar %s\n",
 						psds[p].Location.String(), psds[p].Body, uid)
 				} else {
 					alteredPsds++
-					psds[p].Location = xformedPsds[j].Location
+					first := psdBodies[signature][0]
+					psds[p].Location = xformedPsds[first].Location
+					if len(psdBodies[signature]) > 1 {
+						psdBodies[signature] = psdBodies[signature][1:]
+					}
 				}
 			}
 		}
 	}
 
-	if numErrors > 0 {
-		log.Fatalln("Aborting... found ", numErrors,
-			" when transforming synapse locations.")
-	}
 	log.Printf("Transformed locations of %d T-bars and %d PSDs\n",
 		alteredTbar, alteredPsds)
+	if numTbarErrors > 0 || numPsdErrors > 0 {
+		log.Fatalln("Aborting...", numTbarErrors, "uids unmatched",
+			"and", numPsdErrors, "PSDs unmatched using signatures")
+	}
 	return
 }
