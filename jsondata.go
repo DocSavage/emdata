@@ -51,6 +51,7 @@ func CreateMetadata(description string) (metadata map[string]interface{}) {
 	metadata["computer"], _ = os.Hostname()
 	metadata["software"] = os.Args[0]
 	metadata["description"] = description
+	metadata["file version"] = 1 // Necessary for Raveler
 	return
 }
 
@@ -63,8 +64,8 @@ const (
 // JsonBodies is the high-level structure for an entire
 // body annotation list
 type JsonBodies struct {
-	Metadata map[string]interface{}
-	Data     []JsonBody `json:"data"`
+	Metadata map[string]interface{} `json:"metadata"`
+	Data     []JsonBody             `json:"data"`
 }
 
 // JsonBody is the basic body unit of a body annotation list,
@@ -152,10 +153,11 @@ type JsonTbar struct {
 // JsonPsd holds information for a post-synaptic density (PSD),
 // including the tracing results for various proofreading agents.
 type JsonPsd struct {
-	Location   Point3d                  `json:"location"`
-	Body       BodyId                   `json:"body ID"`
-	Confidence float32                  `json:"confidence,omitempty"`
-	Tracings   map[string]TracingResult `json:"tracings"`
+	Location       Point3d                  `json:"location"`
+	Body           BodyId                   `json:"body ID"`
+	Confidence     float32                  `json:"confidence,omitempty"`
+	Tracings       map[string]TracingResult `json:"tracings"`
+	TransformIssue bool                     `json:"transform issue,omitempty"`
 }
 
 // StackSynapsesJsonFilename returns the file name of the

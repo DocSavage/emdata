@@ -135,66 +135,82 @@ const (
 // ReadTxtMaps reads superpixel->segment and segment->body map
 // .txt files from a stack directory and returns a superpixel->body map.
 func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
-	log.Println("Loading superpixel->segment->body maps for stack:\n",
-		stackPath)
-	spToBodyMap = make(SuperpixelToBodyMap)
+	waitchan := make(chan bool)
 
 	// Load superpixel to segment map
+	spToBodyMapSize := InitialSuperpixelToBodyMapSize(stackPath)
+	spToBodyMap = make(SuperpixelToBodyMap, spToBodyMapSize)
 	filename := filepath.Join(stackPath, SuperpixelToSegmentFilename)
-	file, err := os.Open(filename)
-	if err != nil {
-		log.Fatalf("Could not open %s: %s", filename, err)
-	}
-	linenum := 0
-	lineReader := bufio.NewReader(file)
-	for {
-		line, err := lineReader.ReadString('\n')
+	go func() {
+		log.Println("Loading superpixel->segment map for stack:\n",
+			filename)
+		file, err := os.Open(filename)
 		if err != nil {
-			break
+			log.Fatalf("Could not open %s: %s", filename, err)
 		}
-		if line[0] == ' ' || line[0] == '#' {
-			continue
+		linenum := 0
+		lineReader := bufio.NewReader(file)
+		for {
+			line, err := lineReader.ReadString('\n')
+			if err != nil {
+				break
+			}
+			if line[0] == ' ' || line[0] == '#' {
+				continue
+			}
+			var superpixel Superpixel
+			var segment BodyId
+			if _, err := fmt.Sscanf(line, "%d %d %d", &superpixel.Slice,
+				&superpixel.Label, &segment); err != nil {
+				log.Fatalf("Error line %d in %s", linenum, filename)
+			}
+			spToBodyMap[superpixel] = segment // First pass store segment
+			linenum++
 		}
-		var superpixel Superpixel
-		var segment BodyId
-		if _, err := fmt.Sscanf(line, "%d %d %d", &superpixel.Slice,
-			&superpixel.Label, &segment); err != nil {
-			log.Fatalf("Error line %d in %s", linenum, filename)
-		}
-		spToBodyMap[superpixel] = segment // First pass store segment
-		linenum++
-	}
+		waitchan <- true
+	}()
 
 	// Load segment to body map
-	segmentToBodyMap := make(map[BodyId]BodyId)
+	segmentToBodyMapSize := InitialSegmentToBodyMapSize(stackPath)
+	segmentToBodyMap := make(map[BodyId]BodyId, segmentToBodyMapSize)
 	filename = filepath.Join(stackPath, SegmentToBodyFilename)
-	file, err = os.Open(filename)
-	if err != nil {
-		log.Fatalf("Could not open %s", filename)
-	}
-	linenum = 0
-	lineReader = bufio.NewReader(file)
-	for {
-		line, err := lineReader.ReadString('\n')
+	go func() {
+		log.Println("Loading segment->body map for stack:\n",
+			filename)
+		file, err := os.Open(filename)
 		if err != nil {
-			break
+			log.Fatalf("Could not open %s", filename)
 		}
-		if line[0] == ' ' || line[0] == '#' {
-			continue
+		linenum := 0
+		lineReader := bufio.NewReader(file)
+		for {
+			line, err := lineReader.ReadString('\n')
+			if err != nil {
+				break
+			}
+			if line[0] == ' ' || line[0] == '#' {
+				continue
+			}
+			var segment, body BodyId
+			if _, err := fmt.Sscanf(line, "%d %d", &segment, &body); err != nil {
+				log.Fatalf("Error line %d in %s", linenum, filename)
+			}
+			segmentToBodyMap[segment] = body
+			linenum++
 		}
-		var segment, body BodyId
-		if _, err := fmt.Sscanf(line, "%d %d", &segment, &body); err != nil {
-			log.Fatalf("Error line %d in %s", linenum, filename)
-		}
-		segmentToBodyMap[segment] = body
-		linenum++
-	}
+		waitchan <- true
+	}()
+
+	// Wait until both maps have been loaded
+	_ = <-waitchan
+	_ = <-waitchan
 
 	// Compute superpixel->body map
+	log.Println("Calculating superpixel->body map...")
 	for superpixel, segment := range spToBodyMap {
 		spToBodyMap[superpixel] = segmentToBodyMap[segment]
 	}
-	log.Println("Maps loaded.")
+	log.Println("Maps loaded and computed.")
 	return
 }
 

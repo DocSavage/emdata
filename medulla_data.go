@@ -45,14 +45,23 @@ const (
 	Unknown  SubstackLocation = iota
 )
 
-var SubstackDescription = []string{
+const (
+	DistalSuperpixels   = 1501268
+	DistalSegments      = 774339
+	ProximalSuperpixels = 6966702
+	ProximalSegments    = 4975511
+	Full12kSuperpixels  = 46793902
+	Full12kSegments     = 38889751
+)
+
+var SubstackDescription = [3]string{
 	"Distal",
 	"Proximal",
 	"Unknown",
 }
 
 // GetSubstackLocation returns a SubstackLocation given a string
-// description: "Distal" or "Proximal"
+// description: "Distal", "Proximal", or "12k"
 func GetSubstackLocation(location string) SubstackLocation {
 	if location == "Distal" {
 		return Distal
@@ -111,6 +120,42 @@ const (
 		"/integrate-20110630/data/annotations-synapses-xformed.json"
 )
 
+// InitialSuperpixelToBodyMapSize returns a guess of the # of superpixels
+// for a given stack path.
+func InitialSuperpixelToBodyMapSize(path string) int {
+	isDistal, _ := filepath.Match(DistalExportDir+"/*", path)
+	isProximal, _ := filepath.Match(SeamlessExportDir+"/*", path)
+	is12k, _ := filepath.Match("/groups/flyem/data/medulla-TEM-fall2008/*/data",
+		path)
+	switch {
+	case isDistal || path == DistalStackDir:
+		return DistalSuperpixels
+	case isProximal || path == SeamlessStackDir:
+		return ProximalSuperpixels
+	case is12k || path == Orig12kStackDir:
+		return Full12kSuperpixels
+	}
+	return DistalSuperpixels // Smallest so we don't overestimate
+}
+
+// InitialSegmentToBodyMapSize returns a guess of the # of segments
+// for a given stack path.
+func InitialSegmentToBodyMapSize(path string) int {
+	isDistal, _ := filepath.Match(DistalExportDir+"/*", path)
+	isProximal, _ := filepath.Match(SeamlessExportDir+"/*", path)
+	is12k, _ := filepath.Match("/groups/flyem/data/medulla-TEM-fall2008/*/data",
+		path)
+	switch {
+	case isDistal || path == DistalStackDir:
+		return DistalSegments
+	case isProximal || path == SeamlessStackDir:
+		return ProximalSegments
+	case is12k || path == Orig12kStackDir:
+		return Full12kSegments
+	}
+	return DistalSegments // Smallest so we don't overestimate
+}
+
 // ProofreaderUserids is a slice of userids for proofreaders.
 var ProofreaderUserids = []string{"abeln", "changl", "lauchies",
 	"ogundeyio", "saundersm", "shapirov", "sigmundc", "takemurasa"}
@@ -145,6 +190,12 @@ var proofreadingExports = [2]AssignmentMapping{
 		"sigmundc":   {48, []int{1, 2, 6, 8, 9}},
 		"takemurasa": {48, []int{1, 2, 3, 4, 5, 6}},
 	},
+}
+
+// NumAssignmentSets returns the last assignment set done by
+// a given proofreader for a substack location
+func LastAssignmentSet(userid string, s SubstackLocation) (lastSet int) {
+	return proofreadingExports[s][userid].Last
 }
 
 // UseAssignmentSet returns the export set number to use when analyzing

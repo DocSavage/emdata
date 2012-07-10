@@ -226,6 +226,7 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 			// two PSDs, emit a warning and just choose PSDs in order.
 			xformedPsds := xformed.Data[i].Psds
 			psdBodies := make(map[PsdSignature]([]int))
+			psdAmbiguous := make(map[PsdSignature]bool)
 			for p, _ := range xformedPsds {
 				signature := PsdSignature{xformedPsds[p].Body,
 					xformedPsds[p].Location.Z()}
@@ -234,6 +235,7 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 					log.Printf("-- Duplicate PSD signature for %s: %s",
 						uid, signature)
 					psdBodies[signature] = append(psdBodies[signature], p)
+					psdAmbiguous[signature] = true
 				} else {
 					psdBodies[signature] = make([]int, 1)
 					psdBodies[signature][0] = p
@@ -253,6 +255,10 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 					psds[p].Location = xformedPsds[first].Location
 					if len(psdBodies[signature]) > 1 {
 						psdBodies[signature] = psdBodies[signature][1:]
+					}
+					ambiguous, found := psdAmbiguous[signature]
+					if found && ambiguous {
+						psds[p].TransformIssue = true // Mark problem PSDs
 					}
 				}
 			}
