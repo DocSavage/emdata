@@ -107,6 +107,26 @@ func TileFilename(row int, col int, slice VoxelCoord) string {
 	return filename
 }
 
+// GetSuperpixelTilePt returns a superpixel tile and tile coordinates
+// for a given 3d voxel point in a stack.
+func GetSuperpixelTilePt(stack TiledJsonStack, pt Point3d) (
+	superpixels SuperpixelImage, tileX int, tileY int) {
+
+	// Compute which tile this point falls within
+	x := int(pt.X())
+	y := int(pt.Y())
+	col := x / TileSize
+	row := y / TileSize
+
+	relTilePath := TileFilename(row, col, pt.Z())
+	superpixels, _, _ := ReadSuperpixelTile(stack, relTilePath)
+
+	// Determine relative point within this tile
+	tileX := int(pt.X()) - col*TileSize
+	tileY := superpixels.Bounds().Max.Y - (int(pt.Y()) - row*TileSize) - 1
+	return
+}
+
 // GetBodyOfLocation reads the superpixel tile that contains the given point
 // in stack space and return its body id.
 func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
@@ -117,18 +137,8 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
 			pt, bounds)
 	}
 
-	// Compute which tile this point falls within
-	x := int(pt.X())
-	y := int(pt.Y())
-	col := x / TileSize
-	row := y / TileSize
-
-	relTilePath := TileFilename(row, col, pt.Z())
-	superpixels, _, tilename := ReadSuperpixelTile(stack, relTilePath)
-
-	// Determine relative point within this tile
-	tileX := int(pt.X()) - col*TileSize
-	tileY := superpixels.Bounds().Max.Y - (int(pt.Y()) - row*TileSize) - 1
+	// Get superpixel tile data
+	superpixels, tileX, tileY := GetSuperpixelTilePt(stack, pt)
 
 	// Get the body id
 	var superpixel Superpixel
@@ -137,9 +147,101 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
 
 	if superpixel.Label == 0 {
 		log.Println("** Warning: PSD falls in ZERO SUPERPIXEL: ", pt)
-		log.Println("  Tile:", tilename)
 		return BodyId(0)
 	}
 	bodyId := stack.SuperpixelToBody(superpixel)
 	return bodyId
+}
+
+// GetBodyOfLocation reads the superpixel tile that contains the given point
+// in stack space and return its body id.
+func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
+	excludeBodies BodySet, disfavorBodies BodySet) (bodyId BodyId, radius int) {
+
+	bounds, format := stack.TilesMetadata()
+	if !bounds.Include(pt) {
+		log.Fatalf("FATAL ERROR: PSD falls outside stack: %s > %s",
+			pt, bounds)
+	}
+
+	// Get superpixel tile data
+	superpixels, tileX, tileY := GetSuperpixelTilePt(stack, pt)
+
+	// Check for body using increasing radii
+	var superpixel Superpixel
+	superpixel.Slice = uint32(pt.Z())
+
+	nextBestSuperpixel := 0
+	checkRadius := 6
+	for radius = 0; radius < checkRadius; radius++ {
+		for _, pixel := range pixelsAtRadius(radius, tileX, tileY) {
+			spid := GetSuperpixelId(superpixels, pixel.X, pixel.Y, format)
+			if spid != 0 {
+				superpixel.Label = spid
+				bodyId = stack.SuperpixelToBody(superpixel)
+				_, found := excludeBodies[bodyId]
+				if !found {
+					nextBestSuperpixel := spid
+					_, found = disfavorBodies[bodyId]
+					if !found {
+						return
+					}
+				}
+			}
+		}
+	}
+
+	if superpixel.Label == 0 {
+		log.Println("** Error: Still unable to resolve PSD", pt,
+			"even checking pixels at radius", checkRadius)
+		log.Println("  Stack:", stack)
+		return BodyId(0)
+	}
+	bodyId := stack.SuperpixelToBody(nextBestSuperpixel)
+	return bodyId
+}
+
+// Some unexported code for pixel scanning
+type pixelPt struct {
+	X int
+	Y int
+}
+
+func pixelsAtRadius(r int, x int, y int) (pixels []pixelPt) {
+	pixels = make([]pixelPt)
+	if r == 0 {
+		pixels = append(pixels, pixelPt{x, y})
+		return
+	}
+
+	minX := MaxInt(0, x-r)
+	maxX := MinInt(TileSize-1, x+r)
+	minY := MaxInt(0, y-r)
+	maxY := MinInt(TileSize-1, y+r)
+
+	// Check top line
+	if y-r >= 0 {
+		for ix := minX; ix <= maxX; ix++ {
+			pixels = append(pixels, pixelPt{ix, y - r})
+		}
+	}
+	// Check bottom line
+	if y+r < TileSize {
+		for ix := minX; ix <= maxX; ix++ {
+			pixels = append(pixels, pixelPt{ix, y + r})
+		}
+	}
+	// Check left line
+	if x-r >= 0 {
+		for iy := minY; iy <= maxY; iy++ {
+			pixels = append(pixels, pixelPt{x - r, iy})
+		}
+	}
+	// Check right line
+	if x+r < TileSize {
+		for iy := minY; iy <= maxY; iy++ {
+			pixels = append(pixels, pixelPt{x + r, iy})
+		}
+	}
+	return
 }

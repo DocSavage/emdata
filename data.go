@@ -35,6 +35,22 @@ import (
 	"strconv"
 )
 
+// MaxInt returns the maximum of two ints
+func MaxInt(i, j int) int {
+	if i >= j {
+		return i
+	}
+	return j
+}
+
+// MinInt returns the minimum of two ints
+func MinInt(i, j int) int {
+	if i <= j {
+		return i
+	}
+	return j
+}
+
 // BodyId holds a label for a body.  The 0 body is reserved for
 // edges although it is generally deprecated in recent EM segmentation.
 // This is a signed quantity because 64-bits provides more than 

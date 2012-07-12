@@ -83,18 +83,29 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 	commentedOrphan := 0
 	presumedLeaves := 0
 	noBodyAnnotated := 0
-	psdBodies = make(BodySet) // Set of PSD bodies
+
+	noBodies = make(BodySet)  // Empty BodySet
+	psdBodies = make(BodySet) // Set of all PSD bodies
 
 	synapses := (*tracing).Data
 	for s, _ := range synapses {
 		synapses[s].Tbar.Assignment = fmt.Sprintf("%s-%d",
 			SubstackDescription[location], setnum)
+		excludeBodies := make(BodySet)
+		curPsdBodies := make(BodySet)
+		tbarBody := GetNearestBodyOfLocation(&exportedStack,
+			synapses[s].Tbar.Location, excludeBodies, curPsdBodies)
+
+		// Make first pass through all PSDs
+		excludeBodies[tbarBody] = true
 		ambiguous := []int{}
 		psds := synapses[s].Psds
 		for p, _ := range psds {
 			bodyId := GetBodyOfLocation(&exportedStack, psds[p].Location)
 			if bodyId == 0 {
 				ambiguous = append(ambiguous, p)
+			} else {
+				curPsdBodies[bodyId] = true
 			}
 			bodyNote, found := bodyToNotesMap[bodyId]
 			if found {
@@ -123,6 +134,11 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 				log.Println("Warning: PSD ", psds[p].Location, " -> ",
 					"exported body ", bodyId, " cannot be found in ",
 					"body annotation file for exported stack... skipping")
+			}
+		}
+		// Handle ambiguous PSDs, i.e. ones on zero superpixels.
+		if len(ambiguous) > 0 {
+			for p := range ambiguous {
 			}
 		}
 	}

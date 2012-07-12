@@ -338,9 +338,7 @@ func (stack *Stack) GetBodyToSuperpixelsMap(bodySet BodySet) (
 	bodyToSpMap = make(BodyToSuperpixelsMap)
 	for superpixel, bodyId := range stack.spToBodyMap {
 		_, found := bodySet[bodyId]
-		if !found {
-			log.Println("Warning: Body", bodyId, "is not in stack:", stack)
-		} else {
+		if found {
 			bodyToSpMap[bodyId] = append(bodyToSpMap[bodyId], superpixel)
 		}
 	}
@@ -491,6 +489,13 @@ func OverlapAnalysis(stack1 MappedStack, stack2 MappedStack, bodySet BodySet) (
 
 	// Get the superpixels for stack1 bodies.
 	body1ToSpMap := stack1.GetBodyToSuperpixelsMap(bodySet)
+	for bodyId, _ := range bodySet {
+		_, found := body1ToSpMap[bodyId]
+		if !found {
+			log.Println("** Warning: Body", bodyId, "is not present",
+				"in stack:\n  ", stack1)
+		}
+	}
 
 	// Get the superpixel->body map for stack2.
 	sp2ToBodyMap := stack2.GetSuperpixelToBodyMap()
