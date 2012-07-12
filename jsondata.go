@@ -85,7 +85,7 @@ type JsonBody struct {
 func (bodyNote JsonBody) AnchorComment() bool {
 	matched, err := regexp.MatchString(".*[Aa]nchor [Bb]ody.*", bodyNote.Comment)
 	if err != nil {
-		log.Fatalf("AnchorComment(): %s\n", err)
+		log.Fatalf("FATAL ERROR: AnchorComment(): %s\n", err)
 	}
 	return matched
 }
@@ -94,7 +94,7 @@ func (bodyNote JsonBody) AnchorComment() bool {
 func (bodyNote JsonBody) OrphanComment() bool {
 	matched, err := regexp.MatchString(".*[Oo]rphan.*", bodyNote.Comment)
 	if err != nil {
-		log.Fatalf("OrphanComment(): %s\n", err)
+		log.Fatalf("FATAL ERROR: OrphanComment(): %s\n", err)
 	}
 	return matched
 }
@@ -105,14 +105,15 @@ func ReadBodiesJson(filename string) (bodies *JsonBodies) {
 	var file *os.File
 	var err error
 	if file, err = os.Open(filename); err != nil {
-		log.Fatalf("Failed to open JSON file: %s [%s]",
+		log.Fatalf("FATAL ERROR: Failed to open JSON file: %s [%s]",
 			filename, err)
 	}
 	dec := json.NewDecoder(file)
 	if err := dec.Decode(&bodies); err == io.EOF {
-		log.Fatalf("No data in JSON file: %s\n", filename)
+		log.Fatalf("FATAL ERROR: No data in JSON file: %s\n", filename)
 	} else if err != nil {
-		log.Fatalf("Error reading JSON file (%s): %s\n", filename, err)
+		log.Fatalf("FATAL ERROR: Error reading JSON file (%s): %s\n",
+			filename, err)
 	}
 	return bodies
 }
@@ -126,7 +127,10 @@ type JsonSynapses struct {
 
 // WriteJson writes indented JSON synapse annotation list to writer
 func (synapses JsonSynapses) WriteJson(writer io.Writer) {
-	m, _ := json.Marshal(synapses)
+	m, err := json.Marshal(synapses)
+	if err != nil {
+		log.Fatalf("Error in writing json: %s", err)
+	}
 	var buf bytes.Buffer
 	json.Indent(&buf, m, "", "    ")
 	buf.WriteTo(writer)
@@ -156,6 +160,7 @@ type JsonPsd struct {
 	Location       Point3d                  `json:"location"`
 	Body           BodyId                   `json:"body ID"`
 	Confidence     float32                  `json:"confidence,omitempty"`
+	Uid            string                   `json:"uid,omitempty"`
 	Tracings       map[string]TracingResult `json:"tracings"`
 	TransformIssue bool                     `json:"transform issue,omitempty"`
 }
@@ -178,15 +183,16 @@ func ReadSynapsesJson(filename string) *JsonSynapses {
 	var file *os.File
 	var err error
 	if file, err = os.Open(filename); err != nil {
-		log.Fatalf("Failed to open JSON file: %s [%s]",
+		log.Fatalf("FATAL ERROR: Failed to open JSON file: %s [%s]",
 			filename, err)
 	}
 	dec := json.NewDecoder(file)
 	var synapses *JsonSynapses
 	if err := dec.Decode(&synapses); err == io.EOF {
-		log.Fatalf("No data in JSON file: %s\n", filename)
+		log.Fatalf("FATAL ERROR: No data in JSON file: %s\n", filename)
 	} else if err != nil {
-		log.Fatalf("Error reading JSON file (%s): %s\n", filename, err)
+		log.Fatalf("FATAL ERROR: Error reading JSON file (%s): %s\n",
+			filename, err)
 	}
 	return synapses
 }

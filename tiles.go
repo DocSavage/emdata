@@ -33,13 +33,12 @@ package emdata
 
 import (
 	"fmt"
-	"image"
-	"image/color"
 	"log"
 	"os"
 	"path/filepath"
 	"reflect"
 
+	"image"
 	_ "image/png"
 )
 
@@ -48,44 +47,43 @@ const TileSize = 1024
 // ReadSuperpixelTile reads a superpixel tile, either from current
 // stack directory or a base stack if necessary.
 func ReadSuperpixelTile(stack TiledJsonStack, relTilePath string) (
-	superpixels image.Image, format string) {
+	superpixels SuperpixelImage, format string, filename string) {
 
 	// Search for file
-	filename := filepath.Join(stack.String(), relTilePath)
+	filename = filepath.Join(stack.String(), relTilePath)
 	_, err := os.Stat(filename)
 	if err != nil {
 		switch stack.(type) {
 		case *BaseStack:
-			log.Fatalln("Could not find superpixel tile (", relTilePath,
-				") in base stack (", stack.String(), ")!")
+			log.Fatalln("FATAL ERROR: Could not find superpixel tile (",
+				relTilePath, ") in base stack (", stack.String(), ")!")
 		case *ExportedStack:
 			var exported *ExportedStack = stack.(*ExportedStack)
 			filename = filepath.Join(exported.Base.String(), relTilePath)
 			_, err = os.Stat(filename)
 			if err != nil {
-				log.Fatalln("Could not find superpixel tile (", relTilePath,
-					") in stack (", exported.String(), ") or its base (",
-					exported.Base.String(), ")!")
+				log.Fatalln("FATAL ERROR: Could not find superpixel tile (",
+					relTilePath, ") in stack (", exported.String(),
+					") or its base (", exported.Base.String(), ")!")
 			}
 		default:
-			log.Fatalln("Bad stack type passed into ReadSuperpixel Tile:",
-				reflect.TypeOf(stack))
+			log.Fatalln("FATAL ERROR: Bad stack type passed into",
+				" ReadSuperpixel Tile:", reflect.TypeOf(stack))
 		}
 	}
 
 	// Given correct filename, load the image depending on format
 	file, err := os.Open(filename)
 	if err != nil {
-		log.Fatal("Error opening ", filename, ": ", err)
+		log.Fatal("FATAL ERROR: opening ", filename, ": ", err)
 	}
 	defer file.Close()
 
 	superpixels, format, err = image.Decode(file)
 	if err != nil {
-		log.Fatal("Error decoding ", filename, ": ", err)
+		log.Fatal("FATAL ERROR: decoding ", filename, ": ", err)
 	}
-
-	return superpixels, format
+	return
 }
 
 type TiledJsonStack interface {
@@ -113,9 +111,9 @@ func TileFilename(row int, col int, slice VoxelCoord) string {
 // in stack space and return its body id.
 func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
 
-	bounds, superpixelFormat := stack.TilesMetadata()
+	bounds, format := stack.TilesMetadata()
 	if !bounds.Include(pt) {
-		log.Fatalf("PSD falls outside stack boundaries: %s > %s",
+		log.Fatalf("FATAL ERROR: PSD falls outside stack: %s > %s",
 			pt, bounds)
 	}
 
@@ -126,7 +124,7 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
 	row := y / TileSize
 
 	relTilePath := TileFilename(row, col, pt.Z())
-	superpixels, _ := ReadSuperpixelTile(stack, relTilePath)
+	superpixels, _, tilename := ReadSuperpixelTile(stack, relTilePath)
 
 	// Determine relative point within this tile
 	tileX := int(pt.X()) - col*TileSize
@@ -135,18 +133,11 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
 	// Get the body id
 	var superpixel Superpixel
 	superpixel.Slice = uint32(pt.Z())
-
-	switch superpixelFormat {
-	case Superpixel24Bits:
-		r, g, b, _ := superpixels.At(tileX, tileY).RGBA()
-		superpixel.Label = uint32((b << 16) | (g << 8) | r)
-	case Superpixel16Bits, SuperpixelNone:
-		gray16 := superpixels.At(tileX, tileY)
-		superpixel.Label = uint32(gray16.(color.Gray16).Y)
-	}
+	superpixel.Label = GetSuperpixelId(superpixels, tileX, tileY, format)
 
 	if superpixel.Label == 0 {
-		log.Println("WARNING: PSD falls in ZERO SUPERPIXEL: ", pt)
+		log.Println("** Warning: PSD falls in ZERO SUPERPIXEL: ", pt)
+		log.Println("  Tile:", tilename)
 		return BodyId(0)
 	}
 	bodyId := stack.SuperpixelToBody(superpixel)

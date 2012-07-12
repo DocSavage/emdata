@@ -37,9 +37,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
-//	"regexp"
+	"image"
+	"image/color"
+	_ "image/png"
 )
 
 const (
@@ -105,7 +108,7 @@ func ReadSuperpixelBounds(filename string, superpixelSet map[Superpixel]bool) (
 			&bounds.MinX, &bounds.MinY, &bounds.Width, &bounds.Height,
 			&bounds.Volume)
 		if err != nil {
-			log.Printf("ERROR!!! Cannot parse line %d in %s: %s",
+			log.Fatalf("FATAL ERROR: Cannot parse line %d in %s: %s",
 				linenum, filename, err)
 		}
 		if alwaysSetSuperpixel || superpixelSet[superpixel] {
@@ -127,10 +130,42 @@ type SuperpixelFormat uint8
 
 // Enumerate the types of superpixel id formats
 const (
-	SuperpixelNone SuperpixelFormat = iota
-	Superpixel16Bits
-	Superpixel24Bits
+	SuperpixelNone   SuperpixelFormat = iota
+	Superpixel16Bits SuperpixelFormat = iota
+	Superpixel24Bits SuperpixelFormat = iota
 )
+
+// SuperpixelImage is an image with each pixel encoding a unique
+// superpixel id for that plane.  Superpixel values must be
+// 16-bit grayscale or 32-bit RGBA.
+type SuperpixelImage interface {
+	image.Image
+}
+
+func GetSuperpixelId(superpixels SuperpixelImage, x int, y int,
+	format SuperpixelFormat) (id uint32) {
+
+	switch format {
+	case Superpixel24Bits:
+		colorVal := superpixels.At(x, y)
+		switch colorVal.(type) {
+		case color.NRGBA:
+			v := colorVal.(color.NRGBA)
+			id = uint32(v.B)
+			id <<= 8
+			id |= uint32(v.G)
+			id <<= 8
+			id |= uint32(v.R)
+		default:
+			log.Fatalln("FATAL ERROR: Expected 32-bit RGBA superpixels, got",
+				reflect.TypeOf(colorVal))
+		}
+	case Superpixel16Bits, SuperpixelNone:
+		gray16 := superpixels.At(x, y)
+		id = uint32(gray16.(color.Gray16).Y)
+	}
+	return
+}
 
 // ReadTxtMaps reads superpixel->segment and segment->body map
 // .txt files from a stack directory and returns a superpixel->body map.
@@ -140,13 +175,13 @@ func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
 	// Load superpixel to segment map
 	spToBodyMapSize := InitialSuperpixelToBodyMapSize(stackPath)
 	spToBodyMap = make(SuperpixelToBodyMap, spToBodyMapSize)
-	filename := filepath.Join(stackPath, SuperpixelToSegmentFilename)
 	go func() {
+		filename := filepath.Join(stackPath, SuperpixelToSegmentFilename)
 		log.Println("Loading superpixel->segment map for stack:\n",
 			filename)
 		file, err := os.Open(filename)
 		if err != nil {
-			log.Fatalf("Could not open %s: %s", filename, err)
+			log.Fatalf("FATAL ERROR: Could not open %s: %s", filename, err)
 		}
 		linenum := 0
 		lineReader := bufio.NewReader(file)
@@ -162,7 +197,8 @@ func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
 			var segment BodyId
 			if _, err := fmt.Sscanf(line, "%d %d %d", &superpixel.Slice,
 				&superpixel.Label, &segment); err != nil {
-				log.Fatalf("Error line %d in %s", linenum, filename)
+				log.Fatalf("FATAL ERROR: Error line %d in %s",
+					linenum, filename)
 			}
 			spToBodyMap[superpixel] = segment // First pass store segment
 			linenum++
@@ -173,13 +209,13 @@ func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
 	// Load segment to body map
 	segmentToBodyMapSize := InitialSegmentToBodyMapSize(stackPath)
 	segmentToBodyMap := make(map[BodyId]BodyId, segmentToBodyMapSize)
-	filename = filepath.Join(stackPath, SegmentToBodyFilename)
 	go func() {
+		filename := filepath.Join(stackPath, SegmentToBodyFilename)
 		log.Println("Loading segment->body map for stack:\n",
 			filename)
 		file, err := os.Open(filename)
 		if err != nil {
-			log.Fatalf("Could not open %s", filename)
+			log.Fatalf("FATAL ERROR: Could not open %s", filename)
 		}
 		linenum := 0
 		lineReader := bufio.NewReader(file)
@@ -193,7 +229,8 @@ func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
 			}
 			var segment, body BodyId
 			if _, err := fmt.Sscanf(line, "%d %d", &segment, &body); err != nil {
-				log.Fatalf("Error line %d in %s", linenum, filename)
+				log.Fatalf("FATAL ERROR: Error line %d in %s",
+					linenum, filename)
 			}
 			segmentToBodyMap[segment] = body
 			linenum++
@@ -300,7 +337,10 @@ func (stack *Stack) GetBodyToSuperpixelsMap(bodySet BodySet) (
 	stack.ReadTxtMaps()
 	bodyToSpMap = make(BodyToSuperpixelsMap)
 	for superpixel, bodyId := range stack.spToBodyMap {
-		if bodySet[bodyId] {
+		_, found := bodySet[bodyId]
+		if !found {
+			log.Println("Warning: Body", bodyId, "is not in stack:", stack)
+		} else {
 			bodyToSpMap[bodyId] = append(bodyToSpMap[bodyId], superpixel)
 		}
 	}
@@ -348,8 +388,8 @@ func (stack1 *Stack) SuperpixelBoundsChanged(stack2 *Stack,
 		"to compute overlap analysis between stacks")
 
 	if percentDiff > 0.10 {
-		log.Fatalln("Error!!  More than 10%% voxel difference in superpixels",
-			"between stacks:", percentDiff*100.0, "%% of total",
+		log.Fatalln("FATAL ERROR: More than 10%% voxel difference in",
+			"superpixels between stacks:", percentDiff*100.0, "%% of total",
 			voxelsTotal, "voxels\n", stack1, "\n", stack2)
 	}
 	return false
@@ -382,7 +422,8 @@ func (stack BaseStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
 	filename := filepath.Join(stack.Directory, "tiles", "metadata.txt")
 	file, err := os.Open(filename)
 	if err != nil {
-		log.Fatalf("Could not open tiles/metadata.txt file: %s", filename)
+		log.Fatalf("FATAL ERROR: Could not open tiles/metadata.txt file: %s",
+			filename)
 	}
 	var bounds Bounds3d
 	var superpixelFormat SuperpixelFormat = SuperpixelNone
@@ -391,7 +432,8 @@ func (stack BaseStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
 	bounds.MinPt[0] = 0
 	bounds.MinPt[1] = 0
 	lineReader := bufio.NewReader(file)
-	for line, err := lineReader.ReadString('\n'); err == nil; line, err = lineReader.ReadString('\n') {
+	for line, err := lineReader.ReadString('\n'); err == nil; line,
+		err = lineReader.ReadString('\n') {
 
 		items := strings.Split(line, "=")
 		keyword, value := strings.TrimSpace(items[0]),
@@ -415,7 +457,7 @@ func (stack BaseStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
 			} else if value == "I" {
 				superpixelFormat = Superpixel16Bits
 			} else {
-				log.Fatalf("Illegal superpixel-format type (%s): %s",
+				log.Fatalf("FATAL ERROR: Illegal superpixel format (%s): %s",
 					value, filename)
 			}
 		}
@@ -428,7 +470,7 @@ func (stack BaseStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
 		if maxZUnset {
 			errors = append(errors, "zmax not provided")
 		}
-		log.Fatalf("Error in reading %s: %s",
+		log.Fatalf("FATAL ERROR: Error in reading %s: %s",
 			filename, strings.Join(errors, ", "))
 	}
 	return bounds, superpixelFormat
@@ -500,7 +542,7 @@ func OverlapAnalysis(stack1 MappedStack, stack2 MappedStack, bodySet BodySet) (
 			}
 		}
 		if matchedBodyId == 0 {
-			log.Println("Warning!! Could not find overlapping body ",
+			log.Println("** Warning: Could not find overlapping body ",
 				"for body ", bodyId1)
 		}
 		bodyToBodyMap[bodyId1] = matchedBodyId

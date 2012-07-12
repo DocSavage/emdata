@@ -101,7 +101,7 @@ const (
 		"/medulla.HPF.Leginon.3500x.zhiyuan.fall2008" +
 		"/region.crop4_global_alignment_0161_1460.unreal.161788539746303_40" +
 		"/ms3_1011.1110_4k.4k_09042009/REF_seamless" +
-		"/annotations-synapses-xformed.json"
+		"/annotations-synapses-xformed2.json"
 
 	// SeamlessExportDir is the parent directory of all proofreader exports
 	// of assigned synapse tracing for seamless stack
@@ -117,7 +117,7 @@ const (
 	// for the original 12k x 12k x 1300 stack that has "uid" tags
 	// associated with original T-bars before transformation to 12k space
 	Orig12kSynapsesFile = "/groups/flyem/data/medulla-TEM-fall2008" +
-		"/integrate-20110630/data/annotations-synapses-xformed.json"
+		"/integrate-20110630/data/annotations-synapses-xformed2.json"
 )
 
 // InitialSuperpixelToBodyMapSize returns a guess of the # of superpixels
@@ -223,7 +223,7 @@ func BaseStackDir(location SubstackLocation) (dir string) {
 	case Proximal:
 		dir = SeamlessStackDir
 	default:
-		log.Fatalln("Unknown substack", location,
+		log.Fatalln("FATAL ERROR: Unknown substack", location,
 			"in BaseStackDir()")
 	}
 	return
@@ -243,7 +243,7 @@ func AssignmentExportDir(location SubstackLocation, userid string,
 	case Proximal:
 		dir = filepath.Join(SeamlessExportDir, dir)
 	default:
-		log.Fatalln("Unknown substack", location,
+		log.Fatalln("FATAL ERROR: Unknown substack", location,
 			"in AssignmentExportDir()")
 	}
 	return
@@ -263,7 +263,7 @@ func AssignmentJsonFilename(location SubstackLocation, userid string,
 	case Proximal:
 		filename = filepath.Join(SeamlessStackDir, filename)
 	default:
-		log.Fatalln("Unknown substack", location,
+		log.Fatalln("FATAL ERROR: Unknown substack", location,
 			"in AssignmentJsonFilename()")
 	}
 	return

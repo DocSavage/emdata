@@ -89,9 +89,13 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 	for s, _ := range synapses {
 		synapses[s].Tbar.Assignment = fmt.Sprintf("%s-%d",
 			SubstackDescription[location], setnum)
+		ambiguous := []int{}
 		psds := synapses[s].Psds
 		for p, _ := range psds {
 			bodyId := GetBodyOfLocation(&exportedStack, psds[p].Location)
+			if bodyId == 0 {
+				ambiguous = append(ambiguous, p)
+			}
 			bodyNote, found := bodyToNotesMap[bodyId]
 			if found {
 				var tracingResult TracingResult
@@ -116,7 +120,7 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 				psds[p].Tracings[userid] = tracingResult
 			} else {
 				noBodyAnnotated++
-				log.Println("WARNING!!! PSD ", psds[p].Location, " -> ",
+				log.Println("Warning: PSD ", psds[p].Location, " -> ",
 					"exported body ", bodyId, " cannot be found in ",
 					"body annotation file for exported stack... skipping")
 			}
@@ -144,14 +148,15 @@ func (tracing *JsonSynapses) TransformBodies(bodyToBodyMap map[BodyId]BodyId) (
 	synapses := (*tracing).Data
 	for s, _ := range synapses {
 		psds := synapses[s].Psds
-		for p, _ := range psds {
+		for p, psd := range psds {
 			for userid, result := range psds[p].Tracings {
 				if result != Orphan && result != Leaves && result != 0 {
 					origBody := BodyId(result)
 					targetBody, found := bodyToBodyMap[origBody]
 					if !found {
-						log.Println("ERROR!!! Body->body map does not contain",
-							"PSD body ", result)
+						log.Println("ERROR: Body->body map does not contain",
+							"body", result, "for", userid, "tracing PSD", psd)
+						psds[p].TransformIssue = true
 						numErrors++
 					} else if origBody != targetBody {
 						psds[p].Tracings[userid] = TracingResult(targetBody)
@@ -167,8 +172,8 @@ func (tracing *JsonSynapses) TransformBodies(bodyToBodyMap map[BodyId]BodyId) (
 	}
 
 	if numErrors > 0 {
-		log.Fatalln("Aborting... found ", numErrors,
-			" when transforming PSD bodies.")
+		log.Println("FATAL ERROR: had", numErrors,
+			"errors when transforming PSD bodies.")
 	}
 	log.Printf("Transformed %d of %d PSD bodies\n", altered, altered+unaltered)
 	return
@@ -184,8 +189,8 @@ func (signature PsdSignature) String() string {
 }
 
 // TransformSynapses modifies synapse locations (T-bar and PSDs) based
-// on a transformed synapses annotation list with 'uid' tags and PSDs that
-// have matching body IDs
+// on a transformed synapses annotation list with 'uid' tags for both
+// T-bars and PSDs.
 func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 
 	// Construct a lookup map based on 'uid' tag that points to synapse #
@@ -215,51 +220,50 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 		i, found := uidMap[uid]
 		if !found {
 			numTbarErrors++
-			log.Printf("** Could not find uid %s with xformed synapse list!\n",
+			log.Printf("** Warning: No tbar uid %s with xformed synapse list!\n",
 				uid)
 		} else {
 			synapses[s].Tbar.Location = xformed.Data[i].Tbar.Location
 			alteredTbar++
 
-			// Alter PSD locations using (body ID, Z coord) signature
-			// of transformed synapses.  In cases where we can't resolve
-			// two PSDs, emit a warning and just choose PSDs in order.
+			psds := synapses[s].Psds
 			xformedPsds := xformed.Data[i].Psds
-			psdBodies := make(map[PsdSignature]([]int))
-			psdAmbiguous := make(map[PsdSignature]bool)
-			for p, _ := range xformedPsds {
-				signature := PsdSignature{xformedPsds[p].Body,
-					xformedPsds[p].Location.Z()}
-				_, found := psdBodies[signature]
-				if found {
-					log.Printf("-- Duplicate PSD signature for %s: %s",
-						uid, signature)
-					psdBodies[signature] = append(psdBodies[signature], p)
-					psdAmbiguous[signature] = true
+
+			// Get map of PSDs in transformed T-bar
+			xpsdMap := make(map[string]int)
+			for xp, xpsd := range xformedPsds {
+				if xpsd.Uid == "" {
+					log.Printf("** Warning: Xformed PSD %s has no uid!\n",
+						xpsd.Location)
 				} else {
-					psdBodies[signature] = make([]int, 1)
-					psdBodies[signature][0] = p
+					xpsdMap[xpsd.Uid] = xp
 				}
 			}
-			psds := synapses[s].Psds
-			for p, _ := range psds {
-				signature := PsdSignature{psds[p].Body, psds[p].Location.Z()}
-				_, found := psdBodies[signature]
-				if !found {
-					numPsdErrors++
-					log.Printf("** Found no match for PSD %s (body %d) tbar %s\n",
-						psds[p].Location.String(), psds[p].Body, uid)
+
+			// Transform current PSDs by matching xformed PSD uid
+			for p, psd := range psds {
+				var psdUid string
+				if psd.Uid == "" {
+					// Must be distal PSD so we can compose uid
+					x, y, _ := psd.Location.XYZ()
+					psdUid = fmt.Sprintf("%s-psyn-%05d-%05d", uid, x, y)
+					psds[p].Uid = psdUid
 				} else {
+					psdUid = psd.Uid
+				}
+				xp, found := xpsdMap[psdUid]
+				if found {
+					psds[p].Location = xformedPsds[xp].Location
 					alteredPsds++
-					first := psdBodies[signature][0]
-					psds[p].Location = xformedPsds[first].Location
-					if len(psdBodies[signature]) > 1 {
-						psdBodies[signature] = psdBodies[signature][1:]
+				} else {
+					log.Printf("** Warning: No uid match for psd %s [%s, %s]\n",
+						psd.Location, psd.Uid, psdUid)
+					log.Println(" Does not match any of following xformed psds:")
+					for _, xpsd := range xformedPsds {
+						log.Println("  ", xpsd.Uid, xpsd.Location)
 					}
-					ambiguous, found := psdAmbiguous[signature]
-					if found && ambiguous {
-						psds[p].TransformIssue = true // Mark problem PSDs
-					}
+					numPsdErrors++
+					psds[p].TransformIssue = true
 				}
 			}
 		}
@@ -268,7 +272,7 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 	log.Printf("Transformed locations of %d T-bars and %d PSDs\n",
 		alteredTbar, alteredPsds)
 	if numTbarErrors > 0 || numPsdErrors > 0 {
-		log.Fatalln("Aborting...", numTbarErrors, "uids unmatched",
+		log.Fatalln("FATAL ERROR:", numTbarErrors, "uids unmatched",
 			"and", numPsdErrors, "PSDs unmatched using signatures")
 	}
 	return
