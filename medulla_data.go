@@ -204,8 +204,8 @@ func LastAssignmentSet(userid string, s SubstackLocation) (lastSet int) {
 func UseAssignmentSet(location SubstackLocation, userid string,
 	assignedSet int) (setnum int) {
 
-	for i := range proofreadingExports[location][userid].Use {
-		if proofreadingExports[location][userid].Use[i] == assignedSet {
+	for _, usenum := range proofreadingExports[location][userid].Use {
+		if usenum == assignedSet {
 			setnum = assignedSet
 			return
 		}

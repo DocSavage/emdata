@@ -175,6 +175,8 @@ func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
 	// Load superpixel to segment map
 	spToBodyMapSize := InitialSuperpixelToBodyMapSize(stackPath)
 	spToBodyMap = make(SuperpixelToBodyMap, spToBodyMapSize)
+	log.Println("  -- Initializing superpixel->body map to initial size",
+		spToBodyMapSize)
 	go func() {
 		filename := filepath.Join(stackPath, SuperpixelToSegmentFilename)
 		log.Println("Loading superpixel->segment map for stack:\n",
@@ -209,6 +211,8 @@ func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
 	// Load segment to body map
 	segmentToBodyMapSize := InitialSegmentToBodyMapSize(stackPath)
 	segmentToBodyMap := make(map[BodyId]BodyId, segmentToBodyMapSize)
+	log.Println("  -- Initializing segment->body map to initial size",
+		segmentToBodyMapSize)
 	go func() {
 		filename := filepath.Join(stackPath, SegmentToBodyFilename)
 		log.Println("Loading segment->body map for stack:\n",

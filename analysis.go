@@ -89,9 +89,13 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 			SubstackDescription[location], setnum)
 		excludeBodies := make(BodySet)
 		curPsdBodies := make(BodySet)
-		tbarBody, _ := GetNearestBodyOfLocation(&exportedStack,
+		tbarBody, radius := GetNearestBodyOfLocation(&exportedStack,
 			synapses[s].Tbar.Location, excludeBodies, curPsdBodies)
-
+		if radius > 0 {
+			log.Println("Warning: T-bar", synapses[s].Tbar.Location,
+				"was on ZERO SUPERPIXEL but assigned to body",
+				tbarBody, "at radius", radius, "from T-bar point")
+		}
 		// Make first pass through all PSDs
 		excludeBodies[tbarBody] = true
 		ambiguous := []int{}
@@ -119,7 +123,7 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 		}
 		// Handle ambiguous PSDs, i.e. ones on zero superpixels.
 		if len(ambiguous) > 0 {
-			for p := range ambiguous {
+			for _, p := range ambiguous {
 				bodyId, radius := GetNearestBodyOfLocation(&exportedStack,
 					psds[p].Location, excludeBodies, curPsdBodies)
 				if bodyId == 0 {
