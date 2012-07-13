@@ -163,6 +163,26 @@ type JsonPsd struct {
 	Uid            string                   `json:"uid,omitempty"`
 	Tracings       map[string]TracingResult `json:"tracings"`
 	TransformIssue bool                     `json:"transform issue,omitempty"`
+	BodyIssue      bool                     `json:"body issue,omitempty"`
+}
+
+func (psd *JsonPsd) AddTracedBody(userid string, bodyId BodyId,
+	bodyNote JsonBody) (tracingResult TracingResult) {
+
+	if len(bodyNote.Anchor) != 0 {
+		tracingResult = TracingResult(bodyId)
+	} else if bodyNote.AnchorComment() {
+		tracingResult = TracingResult(bodyId)
+	} else if bodyNote.OrphanComment() {
+		tracingResult = Orphan
+	} else {
+		tracingResult = Leaves
+	}
+	if len((*psd).Tracings) == 0 {
+		(*psd).Tracings = make(map[string]TracingResult)
+	}
+	(*psd).Tracings[userid] = tracingResult
+	return
 }
 
 // StackSynapsesJsonFilename returns the file name of the
@@ -211,17 +231,17 @@ func ReadStackBodiesJson(stack JsonStack) *JsonBodies {
 	return ReadBodiesJson(stack.StackBodiesJsonFilename())
 }
 
-// ReadStackBodyAnnotations returns the default body annotation file
-// for a given stack.
-func ReadStackBodyAnnotations(stack JsonStack) (
-	bodyToNotesMap map[BodyId]JsonBody) {
+// BodyAnnotations correspond to data in a body annotation file
+type BodyAnnotations map[BodyId]JsonBody
 
-	bodyToNotesMap = make(map[BodyId]JsonBody)
+// ReadStackBodyAnnotations returns the BodyAnnotations for a given stack
+func ReadStackBodyAnnotations(stack JsonStack) (annotations BodyAnnotations) {
+	annotations = make(BodyAnnotations)
 	bodyNotes := ReadBodiesJson(stack.StackBodiesJsonFilename())
 	for _, bodyNote := range bodyNotes.Data {
-		bodyToNotesMap[bodyNote.Body] = bodyNote
+		annotations[bodyNote.Body] = bodyNote
 	}
-	return bodyToNotesMap
+	return
 }
 
 // ReadStackSynapsesJson returns the default synapse annotation file

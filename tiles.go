@@ -119,11 +119,11 @@ func GetSuperpixelTilePt(stack TiledJsonStack, pt Point3d) (
 	row := y / TileSize
 
 	relTilePath := TileFilename(row, col, pt.Z())
-	superpixels, _, _ := ReadSuperpixelTile(stack, relTilePath)
+	superpixels, _, _ = ReadSuperpixelTile(stack, relTilePath)
 
 	// Determine relative point within this tile
-	tileX := int(pt.X()) - col*TileSize
-	tileY := superpixels.Bounds().Max.Y - (int(pt.Y()) - row*TileSize) - 1
+	tileX = int(pt.X()) - col*TileSize
+	tileY = superpixels.Bounds().Max.Y - (int(pt.Y()) - row*TileSize) - 1
 	return
 }
 
@@ -156,7 +156,7 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
 // GetBodyOfLocation reads the superpixel tile that contains the given point
 // in stack space and return its body id.
 func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
-	excludeBodies BodySet, disfavorBodies BodySet) (bodyId BodyId, radius int) {
+	excludeBodies BodySet, avoidBodies BodySet) (bodyId BodyId, radius int) {
 
 	bounds, format := stack.TilesMetadata()
 	if !bounds.Include(pt) {
@@ -171,8 +171,9 @@ func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
 	var superpixel Superpixel
 	superpixel.Slice = uint32(pt.Z())
 
-	nextBestSuperpixel := 0
 	checkRadius := 6
+	nextBestRadius := checkRadius
+	nextBestSuperpixel := uint32(0)
 	for radius = 0; radius < checkRadius; radius++ {
 		for _, pixel := range pixelsAtRadius(radius, tileX, tileY) {
 			spid := GetSuperpixelId(superpixels, pixel.X, pixel.Y, format)
@@ -181,8 +182,9 @@ func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
 				bodyId = stack.SuperpixelToBody(superpixel)
 				_, found := excludeBodies[bodyId]
 				if !found {
-					nextBestSuperpixel := spid
-					_, found = disfavorBodies[bodyId]
+					nextBestSuperpixel = spid
+					nextBestRadius = radius
+					_, found = avoidBodies[bodyId]
 					if !found {
 						return
 					}
@@ -195,10 +197,14 @@ func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
 		log.Println("** Error: Still unable to resolve PSD", pt,
 			"even checking pixels at radius", checkRadius)
 		log.Println("  Stack:", stack)
-		return BodyId(0)
+		bodyId = BodyId(0)
+		radius = checkRadius
+		return
 	}
-	bodyId := stack.SuperpixelToBody(nextBestSuperpixel)
-	return bodyId
+	superpixel.Label = nextBestSuperpixel
+	bodyId = stack.SuperpixelToBody(superpixel)
+	radius = nextBestRadius
+	return
 }
 
 // Some unexported code for pixel scanning
@@ -208,7 +214,7 @@ type pixelPt struct {
 }
 
 func pixelsAtRadius(r int, x int, y int) (pixels []pixelPt) {
-	pixels = make([]pixelPt)
+	pixels = make([]pixelPt, 8*r)
 	if r == 0 {
 		pixels = append(pixels, pixelPt{x, y})
 		return

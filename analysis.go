@@ -43,9 +43,11 @@ import (
 type TracingResult int64
 
 const (
-	Orphan TracingResult = -2
-	Leaves TracingResult = -1
-	// Any TracingResult >= 0 is Body Id of anchor
+	Orphan    TracingResult = -2
+	Leaves    TracingResult = -1
+	Edge      TracingResult = 0
+	MinAnchor TracingResult = 1
+	// Any TracingResult >= Anchor is Body Id of anchor
 )
 
 // String returns "Orphan", "Leaves" or the stringified body ID
@@ -73,18 +75,12 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 
 	// Read in the exported body annotations to determine whether PSD was
 	// traced to anchor body or it was orphan/leaves.
-	bodyToNotesMap := ReadStackBodyAnnotations(exportedStack)
-	log.Println("Read exported bodies Json:", len(bodyToNotesMap), "bodies")
+	annotations := ReadStackBodyAnnotations(exportedStack)
+	log.Println("Read exported bodies Json:", len(annotations), "bodies")
 
 	// For each PSD, find body associated with it using superpixel tiles
 	// and the exported session's map.
-	definitiveAnchor := 0
-	commentedAnchor := 0
-	commentedOrphan := 0
-	presumedLeaves := 0
 	noBodyAnnotated := 0
-
-	noBodies = make(BodySet)  // Empty BodySet
 	psdBodies = make(BodySet) // Set of all PSD bodies
 
 	synapses := (*tracing).Data
@@ -93,7 +89,7 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 			SubstackDescription[location], setnum)
 		excludeBodies := make(BodySet)
 		curPsdBodies := make(BodySet)
-		tbarBody := GetNearestBodyOfLocation(&exportedStack,
+		tbarBody, _ := GetNearestBodyOfLocation(&exportedStack,
 			synapses[s].Tbar.Location, excludeBodies, curPsdBodies)
 
 		// Make first pass through all PSDs
@@ -107,28 +103,13 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 			} else {
 				curPsdBodies[bodyId] = true
 			}
-			bodyNote, found := bodyToNotesMap[bodyId]
+			bodyNote, found := annotations[bodyId]
 			if found {
-				var tracingResult TracingResult
-				if len(bodyNote.Anchor) != 0 {
-					definitiveAnchor++
-					psdBodies[bodyId] = true
-					tracingResult = TracingResult(bodyId)
-				} else if bodyNote.AnchorComment() {
-					commentedAnchor++
-					psdBodies[bodyId] = true
-					tracingResult = TracingResult(bodyId)
-				} else if bodyNote.OrphanComment() {
-					commentedOrphan++
-					tracingResult = Orphan
-				} else {
-					presumedLeaves++
-					tracingResult = Leaves
+				pPsd := &(psds[p])
+				tracingResult := pPsd.AddTracedBody(userid, bodyId, bodyNote)
+				if tracingResult >= MinAnchor {
+					psdBodies[BodyId(tracingResult)] = true
 				}
-				if len(psds[p].Tracings) == 0 {
-					psds[p].Tracings = make(map[string]TracingResult)
-				}
-				psds[p].Tracings[userid] = tracingResult
 			} else {
 				noBodyAnnotated++
 				log.Println("Warning: PSD ", psds[p].Location, " -> ",
@@ -139,14 +120,38 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 		// Handle ambiguous PSDs, i.e. ones on zero superpixels.
 		if len(ambiguous) > 0 {
 			for p := range ambiguous {
+				bodyId, radius := GetNearestBodyOfLocation(&exportedStack,
+					psds[p].Location, excludeBodies, curPsdBodies)
+				if bodyId == 0 {
+					psds[p].BodyIssue = true
+				} else {
+					if curPsdBodies[bodyId] {
+						log.Println("Flagged: Found body", bodyId, "for PSD",
+							psds[p].Location, "but it is also assigned to",
+							"another PSD.")
+					} else {
+						log.Println("Found body", bodyId, "for PSD",
+							psds[p].Location, "after search to radius of",
+							radius, "pixels.")
+					}
+					bodyNote, found := annotations[bodyId]
+					if found {
+						pPsd := &(psds[p])
+						tracingResult := pPsd.AddTracedBody(userid, bodyId, bodyNote)
+						if tracingResult >= MinAnchor {
+							psdBodies[BodyId(tracingResult)] = true
+						}
+					} else {
+						noBodyAnnotated++
+						log.Println("Warning: Ambiguous PSD", psds[p].Location,
+							"-> exported body", bodyId, "cannot be found in",
+							"body annotation file for exported stack... skipping")
+					}
+				}
 			}
 		}
 	}
 
-	log.Println("  Anchors marked with anchor tag: ", definitiveAnchor)
-	log.Println(" Anchors detected within comment: ", commentedAnchor)
-	log.Println(" Orphans detected within comment: ", commentedOrphan)
-	log.Println("PSD bodies with no anchor/orphan: ", presumedLeaves)
 	if noBodyAnnotated > 0 {
 		log.Println("*** PSD bodies not annotated: ", noBodyAnnotated)
 	}
