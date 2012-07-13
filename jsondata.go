@@ -34,6 +34,7 @@ package emdata
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -183,6 +184,18 @@ func (psd *JsonPsd) AddTracedBody(userid string, bodyId BodyId,
 	}
 	(*psd).Tracings[userid] = tracingResult
 	return
+}
+
+// TbarUid returns a string T-bar uid for a given 3d point
+func TbarUid(pt Point3d) string {
+	x, y, z := pt.XYZ()
+	return fmt.Sprintf("%05d-%05d-%05d", x, y, z)
+}
+
+// PsdUid returns a string PSD uid for a given PSD
+func PsdUid(tbarUid string, psdPt Point3d) string {
+	x, y, _ := psdPt.XYZ()
+	return fmt.Sprintf("%s-psyn-%05d-%05d", tbarUid, x, y)
 }
 
 // StackSynapsesJsonFilename returns the file name of the

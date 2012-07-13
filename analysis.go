@@ -213,6 +213,46 @@ func (signature PsdSignature) String() string {
 	return fmt.Sprintf("{ Body: %d, Z: %d }", signature.Body, signature.Z)
 }
 
+type psdIndex struct {
+	synapseI int
+	psdI     int
+}
+
+// AddPsdUids modifies a synapse annotation list to include "uid" tags
+// for each PSD, either generated from the PSD location or from a matching
+// PSD's uid in a given synapse file.
+func (tracing *JsonSynapses) AddPsdUids(xformed *JsonSynapses) {
+	// If we have a transformed synapse list, create an index using
+	// PSD location
+	uidMap := make(map[Point3d]psdIndex)
+	if xformed != nil {
+		for s, synapse := range (*xformed).Data {
+			for p, psd := range synapse.Psds {
+				uidMap[psd.Location] = psdIndex{s, p}
+			}
+		}
+	}
+
+	// Go through all our PSDs and add uids
+	synapses := (*tracing).Data
+	for s, synapse := range synapses {
+		psds := synapses[s].Psds
+		for p, psd := range psds {
+			if xformed == nil {
+				psds[p].Uid = PsdUid(TbarUid(synapse.Tbar.Location), psd.Location)
+			} else {
+				i, found := uidMap[psd.Location]
+				if found {
+					psds[p].Uid = (*xformed).Data[i.synapseI].Psds[i.psdI].Uid
+				} else {
+					log.Println("ERROR: No matching transformed PSD found",
+						"for PSD", psd.Location)
+				}
+			}
+		}
+	}
+}
+
 // TransformSynapses modifies synapse locations (T-bar and PSDs) based
 // on a transformed synapses annotation list with 'uid' tags for both
 // T-bars and PSDs.
@@ -236,8 +276,7 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 		// Alter T-bar location
 		var uid string
 		if synapses[s].Tbar.Uid == "" {
-			x, y, z := synapses[s].Tbar.Location.XYZ()
-			uid = fmt.Sprintf("%05d-%05d-%05d", x, y, z)
+			uid = TbarUid(synapses[s].Tbar.Location)
 			synapses[s].Tbar.Uid = uid
 		} else {
 			uid = synapses[s].Tbar.Uid
@@ -267,22 +306,13 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 
 			// Transform current PSDs by matching xformed PSD uid
 			for p, psd := range psds {
-				var psdUid string
-				if psd.Uid == "" {
-					// Must be distal PSD so we can compose uid
-					x, y, _ := psd.Location.XYZ()
-					psdUid = fmt.Sprintf("%s-psyn-%05d-%05d", uid, x, y)
-					psds[p].Uid = psdUid
-				} else {
-					psdUid = psd.Uid
-				}
-				xp, found := xpsdMap[psdUid]
+				xp, found := xpsdMap[psd.Uid]
 				if found {
 					psds[p].Location = xformedPsds[xp].Location
 					alteredPsds++
 				} else {
-					log.Printf("** Warning: No uid match for psd %s [%s, %s]\n",
-						psd.Location, psd.Uid, psdUid)
+					log.Printf("** Warning: No match for psd %s, uid %s\n",
+						psd.Location, psd.Uid)
 					log.Println(" Does not match any of following xformed psds:")
 					for _, xpsd := range xformedPsds {
 						log.Println("  ", xpsd.Uid, xpsd.Location)
