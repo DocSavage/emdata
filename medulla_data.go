@@ -37,12 +37,13 @@ import (
 	"log"
 )
 
-type SubstackLocation int
+type StackId int
 
 const (
-	Distal   SubstackLocation = iota
-	Proximal SubstackLocation = iota
-	Unknown  SubstackLocation = iota
+	Distal    StackId = iota
+	Proximal  StackId = iota
+	Orig12k   StackId = iota
+	Target12k StackId = iota
 )
 
 const (
@@ -50,27 +51,22 @@ const (
 	DistalSegments      = 774339
 	ProximalSuperpixels = 6966702
 	ProximalSegments    = 4975511
-	Full12kSuperpixels  = 46793902
-	Full12kSegments     = 38889751
+	Orig12kSuperpixels  = 46793902
+	Orig12kSegments     = 38889751
 )
 
-var SubstackDescription = [3]string{
-	"Distal",
-	"Proximal",
-	"Unknown",
+var StackDescription = map[StackId]string{
+	Distal:    "Distal",
+	Proximal:  "Proximal",
+	Orig12k:   "Orig12k",
+	Target12k: "Target12k",
 }
 
-// GetSubstackLocation returns a SubstackLocation given a string
-// description: "Distal", "Proximal", or "12k"
-func GetSubstackLocation(location string) SubstackLocation {
-	if location == "Distal" {
-		return Distal
-	} else if location == "Proximal" {
-		return Proximal
-	} else {
-		log.Fatalln("Stack location should be either 'Distal' or 'Proximal'")
-	}
-	return Unknown
+var StackDescriptionToId = map[string]StackId{
+	"Distal":    Distal,
+	"Proximal":  Proximal,
+	"Orig12k":   Orig12k,
+	"Target12k": Target12k,
 }
 
 const (
@@ -133,7 +129,7 @@ func InitialSuperpixelToBodyMapSize(path string) int {
 	case isProximal || path == SeamlessStackDir:
 		return ProximalSuperpixels
 	case is12k || path == Orig12kStackDir:
-		return Full12kSuperpixels
+		return Orig12kSuperpixels
 	}
 	return DistalSuperpixels // Smallest so we don't overestimate
 }
@@ -151,7 +147,7 @@ func InitialSegmentToBodyMapSize(path string) int {
 	case isProximal || path == SeamlessStackDir:
 		return ProximalSegments
 	case is12k || path == Orig12kStackDir:
-		return Full12kSegments
+		return Orig12kSegments
 	}
 	return DistalSegments // Smallest so we don't overestimate
 }
@@ -194,14 +190,14 @@ var proofreadingExports = [2]AssignmentMapping{
 
 // NumAssignmentSets returns the last assignment set done by
 // a given proofreader for a substack location
-func LastAssignmentSet(userid string, s SubstackLocation) (lastSet int) {
+func LastAssignmentSet(userid string, s StackId) (lastSet int) {
 	return proofreadingExports[s][userid].Last
 }
 
 // UseAssignmentSet returns the export set number to use when analyzing
 // proofreading assignment 'assignedSet'.  The mapping is required since
 // some exports are cumulative and others are copied in an ad-hoc fashion.
-func UseAssignmentSet(location SubstackLocation, userid string,
+func UseAssignmentSet(location StackId, userid string,
 	assignedSet int) (setnum int) {
 
 	for _, usenum := range proofreadingExports[location][userid].Use {
@@ -216,7 +212,7 @@ func UseAssignmentSet(location SubstackLocation, userid string,
 
 // BaseStackDir returns the directory of the base stack for
 // a given substack location.
-func BaseStackDir(location SubstackLocation) (dir string) {
+func BaseStackDir(location StackId) (dir string) {
 	switch location {
 	case Distal:
 		dir = DistalStackDir
@@ -233,7 +229,7 @@ func BaseStackDir(location SubstackLocation) (dir string) {
 // exported a given synapse assignment set.  Note that due to accumulation
 // and starting new sessions, exports might cover an abitrary list of
 // assignments.
-func AssignmentExportDir(location SubstackLocation, userid string,
+func AssignmentExportDir(location StackId, userid string,
 	setnum int) (dir string) {
 
 	dir = fmt.Sprintf("%s.synapse%d", userid, setnum)
@@ -251,7 +247,7 @@ func AssignmentExportDir(location SubstackLocation, userid string,
 
 // AssignmentJsonFilename returns the assignment JSON filename for a
 // synapse-driven proofreading assignment.
-func AssignmentJsonFilename(location SubstackLocation, userid string,
+func AssignmentJsonFilename(location StackId, userid string,
 	setnum int) (filename string) {
 
 	filename = fmt.Sprintf(

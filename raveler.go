@@ -478,18 +478,22 @@ func (stack BaseStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
 	return bounds, superpixelFormat
 }
 
-type Overlaps map[BodyId]uint32
+type Overlaps map[BodyId]int
 
 type OverlapsMap map[BodyId]Overlaps
 
-type StackWithMaps interface {
+type BestOverlap struct {
+	MatchedBody BodyId
+	OverlapSize int
 }
+
+type BestOverlapMap map[BodyId]BestOverlap
 
 // OverlapAnalysis returns a body->body mapping between two stacks
 // determined by maximal superpixel overlap.  It assumes that the
 // superpixel IDs refer to the same areas.
 func OverlapAnalysis(stack1 MappedStack, stack2 MappedStack, bodySet BodySet) (
-	bodyToBodyMap map[BodyId]BodyId) {
+	matchingMap BestOverlapMap) {
 
 	// Get the superpixels for stack1 bodies.
 	body1ToSpMap := stack1.GetBodyToSuperpixelsMap(bodySet)
@@ -539,10 +543,10 @@ func OverlapAnalysis(stack1 MappedStack, stack2 MappedStack, bodySet BodySet) (
 		}
 	*/
 
-	// Construct body->body map from maximal overlaps
-	bodyToBodyMap = make(map[BodyId]BodyId)
+	// Construct matching map from maximal overlaps
+	matchingMap = make(BestOverlapMap)
 	for bodyId1, overlaps := range overlapsMap {
-		var largest uint32
+		var largest int
 		var matchedBodyId BodyId
 		for bodyId2, count := range overlaps {
 			if count > largest {
@@ -554,10 +558,9 @@ func OverlapAnalysis(stack1 MappedStack, stack2 MappedStack, bodySet BodySet) (
 			log.Println("** Warning: Could not find overlapping body ",
 				"for body ", bodyId1)
 		}
-		bodyToBodyMap[bodyId1] = matchedBodyId
+		matchingMap[bodyId1] = BestOverlap{matchedBodyId, largest}
 	}
-
-	return bodyToBodyMap
+	return
 }
 
 // SessionDir is a directory path to a session, which implies data

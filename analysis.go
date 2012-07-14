@@ -65,11 +65,39 @@ type TracingAgent string
 
 // CreatePsdTracing creates a PsdTracing struct by examining each assigned
 // location and determining the exported body ID of the stack for that location.
-func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
+func CreatePsdTracing(stackId StackId, userid string, setnum int,
 	exportedStack ExportedStack) (tracing *JsonSynapses, psdBodies BodySet) {
 
+	psdBodies = make(BodySet) // Set of all PSD bodies
+
+	// Make a closure that adds a traced body to a PSD and modifies
+	// the psdBodies set.
+	addTracedBody := func(psd *JsonPsd, bodyId BodyId, bodyNote JsonBody) {
+		var tracingResult TracingResult
+		if len(bodyNote.Anchor) != 0 {
+			tracingResult = TracingResult(bodyId)
+			psdBodies[bodyId] = true
+		} else if bodyNote.AnchorComment() {
+			tracingResult = TracingResult(bodyId)
+			psdBodies[bodyId] = true
+		} else if bodyNote.OrphanComment() {
+			tracingResult = Orphan
+		} else {
+			tracingResult = Leaves
+		}
+		if len((*psd).Tracings) == 0 {
+			(*psd).Tracings = make([]JsonTracing, 2)
+		}
+		var tracing JsonTracing
+		tracing.Userid = userid
+		tracing.Result = tracingResult
+		tracing.Stack = StackDescription[stackId]
+		tracing.AssignmentSet = setnum
+		(*psd).Tracings = append((*psd).Tracings, tracing)
+	}
+
 	// Read in the assignment JSON: set of PSDs
-	jsonFilename := AssignmentJsonFilename(location, userid, setnum)
+	jsonFilename := AssignmentJsonFilename(stackId, userid, setnum)
 	tracing = ReadSynapsesJson(jsonFilename)
 	log.Println("Read assignment Json:", len(tracing.Data), "synapses")
 
@@ -81,12 +109,11 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 	// For each PSD, find body associated with it using superpixel tiles
 	// and the exported session's map.
 	noBodyAnnotated := 0
-	psdBodies = make(BodySet) // Set of all PSD bodies
 
 	synapses := (*tracing).Data
 	for s, _ := range synapses {
 		synapses[s].Tbar.Assignment = fmt.Sprintf("%s-%d",
-			SubstackDescription[location], setnum)
+			StackDescription[stackId], setnum)
 		excludeBodies := make(BodySet)
 		curPsdBodies := make(BodySet)
 		tbarBody, radius := GetNearestBodyOfLocation(&exportedStack,
@@ -109,11 +136,7 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 			}
 			bodyNote, found := annotations[bodyId]
 			if found {
-				pPsd := &(psds[p])
-				tracingResult := pPsd.AddTracedBody(userid, bodyId, bodyNote)
-				if tracingResult >= MinAnchor {
-					psdBodies[BodyId(tracingResult)] = true
-				}
+				addTracedBody(&(psds[p]), bodyId, bodyNote)
 			} else {
 				noBodyAnnotated++
 				log.Println("Warning: PSD ", psds[p].Location, " -> ",
@@ -140,11 +163,7 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 					}
 					bodyNote, found := annotations[bodyId]
 					if found {
-						pPsd := &(psds[p])
-						tracingResult := pPsd.AddTracedBody(userid, bodyId, bodyNote)
-						if tracingResult >= MinAnchor {
-							psdBodies[BodyId(tracingResult)] = true
-						}
+						addTracedBody(&(psds[p]), bodyId, bodyNote)
 					} else {
 						noBodyAnnotated++
 						log.Println("Warning: Ambiguous PSD", psds[p].Location,
@@ -163,8 +182,8 @@ func CreatePsdTracing(location SubstackLocation, userid string, setnum int,
 }
 
 // TransformBodies applies a body->body map to transform any traced bodies.
-func (tracing *JsonSynapses) TransformBodies(bodyToBodyMap map[BodyId]BodyId) (
-	psdBodies BodySet) {
+func (tracing *JsonSynapses) TransformBodies(matchedBodyMap BestOverlapMap,
+	stack StackId) (psdBodies BodySet) {
 
 	psdBodies = make(BodySet)
 	numErrors := 0
@@ -174,22 +193,37 @@ func (tracing *JsonSynapses) TransformBodies(bodyToBodyMap map[BodyId]BodyId) (
 	for s, _ := range synapses {
 		psds := synapses[s].Psds
 		for p, psd := range psds {
-			for userid, result := range psds[p].Tracings {
-				if result != Orphan && result != Leaves && result != 0 {
-					origBody := BodyId(result)
-					targetBody, found := bodyToBodyMap[origBody]
+			for t, tracing := range psds[p].Tracings {
+				if tracing.Result != Orphan && tracing.Result != Leaves &&
+					tracing.Result != 0 {
+
+					origBody := BodyId(tracing.Result)
+					match, found := matchedBodyMap[origBody]
 					if !found {
 						log.Println("ERROR: Body->body map does not contain",
-							"body", result, "for", userid, "tracing PSD", psd)
+							"body", tracing.Result, "for", tracing.Userid,
+							"tracing PSD", psd)
 						psds[p].TransformIssue = true
 						numErrors++
-					} else if origBody != targetBody {
-						psds[p].Tracings[userid] = TracingResult(targetBody)
-						psdBodies[targetBody] = true
-						altered++
 					} else {
-						psdBodies[origBody] = true
-						unaltered++
+						if origBody != match.MatchedBody {
+							altered++
+							fmt.Println("PSD body", origBody, "->",
+								match.MatchedBody)
+						} else {
+							unaltered++
+						}
+						switch stack {
+						case Distal, Proximal:
+							psds[p].Tracings[t].ExportedBody = origBody
+							psds[p].Tracings[t].BaseColumnBody = match.MatchedBody
+							psds[p].Tracings[t].ColumnOverlaps = match.OverlapSize
+						case Target12k:
+							psds[p].Tracings[t].Result = TracingResult(match.MatchedBody)
+							psds[p].Tracings[t].Orig12kBody = origBody
+							psds[p].Tracings[t].TargetOverlaps = match.OverlapSize
+						}
+						psdBodies[match.MatchedBody] = true
 					}
 				}
 			}
