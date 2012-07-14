@@ -158,32 +158,40 @@ type JsonTbar struct {
 // JsonPsd holds information for a post-synaptic density (PSD),
 // including the tracing results for various proofreading agents.
 type JsonPsd struct {
-	Location       Point3d                  `json:"location"`
-	Body           BodyId                   `json:"body ID"`
-	Confidence     float32                  `json:"confidence,omitempty"`
-	Uid            string                   `json:"uid,omitempty"`
-	Tracings       map[string]TracingResult `json:"tracings"`
-	TransformIssue bool                     `json:"transform issue,omitempty"`
-	BodyIssue      bool                     `json:"body issue,omitempty"`
+	Location       Point3d       `json:"location"`
+	Body           BodyId        `json:"body ID"`
+	Confidence     float32       `json:"confidence,omitempty"`
+	Uid            string        `json:"uid,omitempty"`
+	Tracings       []JsonTracing `json:"tracings"`
+	TransformIssue bool          `json:"transform issue,omitempty"`
+	BodyIssue      bool          `json:"body issue,omitempty"`
 }
 
-func (psd *JsonPsd) AddTracedBody(userid string, bodyId BodyId,
-	bodyNote JsonBody) (tracingResult TracingResult) {
+// JsonTracing is the data from a single PSD tracing and also
+// holds data useful for quality control to determine if
+// transformations and overlap analysis was correct.
+type JsonTracing struct {
+	Userid         string        `json:"userid"`
+	Result         TracingResult `json:"result"`
+	Stack          string        `json:"stack id"`
+	AssignmentSet  int           `json:"assignment set"`
+	ExportedBody   BodyId        `json:"exported traced body"`
+	ExportedSize   int           `json:"exported traced body size,omitempty"`
+	BaseColumnBody BodyId        `json:"base column traced body,omitempty"`
+	Orig12kBody    BodyId        `json:"12k traced body,omitempty"`
+	ColumnOverlaps int           `json:"export->base overlap,omitempty"`
+	TargetOverlaps int           `json:"orig12k->target overlap,omitempty"`
+}
 
-	if len(bodyNote.Anchor) != 0 {
-		tracingResult = TracingResult(bodyId)
-	} else if bodyNote.AnchorComment() {
-		tracingResult = TracingResult(bodyId)
-	} else if bodyNote.OrphanComment() {
-		tracingResult = Orphan
-	} else {
-		tracingResult = Leaves
+// GetTracingIndex returns the index of the tracing for a PSD that 
+// was proofread by a given userid
+func (psd *JsonPsd) GetTracingIndex(userid string) (index int, found bool) {
+	for i, tracing := range (*psd).Tracings {
+		if tracing.Userid == userid {
+			return i, true
+		}
 	}
-	if len((*psd).Tracings) == 0 {
-		(*psd).Tracings = make(map[string]TracingResult)
-	}
-	(*psd).Tracings[userid] = tracingResult
-	return
+	return -1, false
 }
 
 // TbarUid returns a string T-bar uid for a given 3d point
