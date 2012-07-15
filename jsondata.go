@@ -183,11 +183,10 @@ type JsonTracing struct {
 	TargetOverlaps int           `json:"orig12k->target overlap,omitempty"`
 }
 
-// GetTracingIndex returns the index of the tracing for a PSD that 
-// was proofread by a given userid
-func (psd *JsonPsd) GetTracingIndex(userid string) (index int, found bool) {
-	for i, tracing := range (*psd).Tracings {
-		if tracing.Userid == userid {
+// GetTracingIndex returns the index of the PSD given a PSD uid. 
+func (synapse JsonSynapse) GetPsdIndex(psdUid string) (index int, found bool) {
+	for i, psd := range synapse.Psds {
+		if psd.Uid == psdUid {
 			return i, true
 		}
 	}

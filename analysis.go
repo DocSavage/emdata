@@ -66,7 +66,8 @@ type TracingAgent string
 // CreatePsdTracing creates a PsdTracing struct by examining each assigned
 // location and determining the exported body ID of the stack for that location.
 func CreatePsdTracing(stackId StackId, userid string, setnum int,
-	exportedStack ExportedStack) (tracing *JsonSynapses, psdBodies BodySet) {
+	exportedStack ExportedStack, baseStack BaseStack) (
+	tracing *JsonSynapses, psdBodies BodySet) {
 
 	psdBodies = make(BodySet) // Set of all PSD bodies
 
@@ -108,7 +109,9 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 
 	// For each PSD, find body associated with it using superpixel tiles
 	// and the exported session's map.
-	noBodyAnnotated := 0
+	var noBodyAnnotated int
+	var totalPsds int
+	var psdsChanged int // For quality-control: make sure PSDs actually traced
 
 	synapses := (*tracing).Data
 	for s, _ := range synapses {
@@ -128,7 +131,11 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 		ambiguous := []int{}
 		psds := synapses[s].Psds
 		for p, _ := range psds {
+			totalPsds++
 			bodyId := GetBodyOfLocation(&exportedStack, psds[p].Location)
+			if bodyId != GetBodyOfLocation(&baseStack, psds[p].Location) {
+				psdsChanged++
+			}
 			if bodyId == 0 {
 				ambiguous = append(ambiguous, p)
 			} else {
@@ -177,6 +184,15 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 
 	if noBodyAnnotated > 0 {
 		log.Println("*** PSD bodies not annotated: ", noBodyAnnotated)
+	}
+	if psdsChanged == 0 {
+		log.Println("ERROR: None of", totalPsds,
+			"PSD bodies were changed during proofreading!")
+		log.Println("  Userid:", userid)
+		log.Println("  Stack:", StackDescription[stackId])
+		log.Println("  Assignment Set:", setnum)
+		log.Println("  Assignment Json:", jsonFilename)
+		log.Println("  Exported Stack:", exportedStack)
 	}
 	return
 }
