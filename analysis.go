@@ -132,11 +132,10 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 		// Make first pass through all PSDs
 		excludeBodies[tbarBody] = true
 		ambiguous := []int{}
-		psds := synapses[s].Psds
-		for p, _ := range psds {
+		for p, psd := range synapses[s].Psds {
 			totalPsds++
-			bodyId := GetBodyOfLocation(&exportedStack, psds[p].Location)
-			if bodyId != GetBodyOfLocation(&baseStack, psds[p].Location) {
+			bodyId := GetBodyOfLocation(&exportedStack, psd.Location)
+			if bodyId != GetBodyOfLocation(&baseStack, psd.Location) {
 				psdsChanged++
 			}
 			if bodyId == 0 {
@@ -146,10 +145,10 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 			}
 			bodyNote, found := annotations[bodyId]
 			if found {
-				_ = addTracedBody(&(psds[p]), bodyId, bodyNote)
+				_ = addTracedBody(&(synapses[s].Psds[p]), bodyId, bodyNote)
 			} else {
 				noBodyAnnotated++
-				log.Println("Warning: PSD ", psds[p].Location, " -> ",
+				log.Println("Warning: PSD ", psd.Location, " -> ",
 					"exported body ", bodyId, " cannot be found in ",
 					"body annotation file for exported stack... skipping")
 			}
@@ -157,27 +156,28 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 		// Handle ambiguous PSDs, i.e. ones on zero superpixels.
 		if len(ambiguous) > 0 {
 			for _, p := range ambiguous {
+				pPsd := &(synapses[s].Psds[p])
 				bodyId, radius := GetNearestBodyOfLocation(&exportedStack,
-					psds[p].Location, excludeBodies, curPsdBodies)
+					(*pPsd).Location, excludeBodies, curPsdBodies)
 				if bodyId == 0 {
-					psds[p].BodyIssue = true
+					(*pPsd).BodyIssue = true
 				} else {
 					if curPsdBodies[bodyId] {
 						log.Println("Flagged: Found body", bodyId, "for PSD",
-							psds[p].Location, "but it is also assigned to",
+							(*pPsd).Location, "but it is also assigned to",
 							"another PSD.")
 					} else {
 						log.Println("Found body", bodyId, "for PSD",
-							psds[p].Location, "after search to radius of",
+							(*pPsd).Location, "after search to radius of",
 							radius, "pixels.")
 					}
 					bodyNote, found := annotations[bodyId]
 					if found {
-						pTracing := addTracedBody(&(psds[p]), bodyId, bodyNote)
+						pTracing := addTracedBody(pPsd, bodyId, bodyNote)
 						(*pTracing).UsedBodyRadius = radius
 					} else {
 						noBodyAnnotated++
-						log.Println("Warning: Ambiguous PSD", psds[p].Location,
+						log.Println("Warning: Ambiguous PSD", (*pPsd).Location,
 							"-> exported body", bodyId, "cannot be found in",
 							"body annotation file for exported stack... skipping")
 					}
@@ -197,6 +197,9 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 		log.Println("  Assignment Set:", setnum)
 		log.Println("  Assignment Json:", jsonFilename)
 		log.Println("  Exported Stack:", exportedStack)
+	} else {
+		log.Println("Proofreader altered", psdsChanged, "of", totalPsds,
+			"during synapse-driven proofreading")
 	}
 	return
 }
@@ -209,11 +212,10 @@ func (tracing *JsonSynapses) TransformBodies(matchedBodyMap BestOverlapMap,
 	numErrors := 0
 	altered := 0
 	unaltered := 0
-	synapses := (*tracing).Data
-	for s, _ := range synapses {
-		psds := synapses[s].Psds
-		for p, psd := range psds {
-			for t, tracing := range psds[p].Tracings {
+	for s, synapse := range (*tracing).Data {
+		for p, psd := range synapse.Psds {
+			pPsd := &((*tracing).Data[s].Psds[p])
+			for t, tracing := range (*pPsd).Tracings {
 				if tracing.Result != Orphan && tracing.Result != Leaves &&
 					tracing.Result != 0 {
 
@@ -228,7 +230,7 @@ func (tracing *JsonSynapses) TransformBodies(matchedBodyMap BestOverlapMap,
 						log.Println("ERROR: Body->body map does not contain",
 							"body", tracing.Result, "for", tracing.Userid,
 							"tracing PSD", psd.Location)
-						psds[p].TransformIssue = true
+						(*pPsd).TransformIssue = true
 						numErrors++
 					} else {
 						if origBody != match.MatchedBody {
@@ -240,12 +242,12 @@ func (tracing *JsonSynapses) TransformBodies(matchedBodyMap BestOverlapMap,
 						}
 						switch stackId {
 						case Distal, Proximal:
-							psds[p].Tracings[t].BaseColumnBody = match.MatchedBody
-							psds[p].Tracings[t].ColumnOverlaps = match.OverlapSize
-							psds[p].Tracings[t].ExportedSize = match.MaxOverlap
+							(*pPsd).Tracings[t].BaseColumnBody = match.MatchedBody
+							(*pPsd).Tracings[t].ColumnOverlaps = match.OverlapSize
+							(*pPsd).Tracings[t].ExportedSize = match.MaxOverlap
 						case Target12k:
-							psds[p].Tracings[t].Result = TracingResult(match.MatchedBody)
-							psds[p].Tracings[t].TargetOverlaps = match.OverlapSize
+							(*pPsd).Tracings[t].Result = TracingResult(match.MatchedBody)
+							(*pPsd).Tracings[t].TargetOverlaps = match.OverlapSize
 						}
 						psdBodies[match.MatchedBody] = true
 					}
@@ -292,16 +294,17 @@ func (tracing *JsonSynapses) AddPsdUids(xformed *JsonSynapses) {
 	}
 
 	// Go through all our PSDs and add uids
-	synapses := (*tracing).Data
-	for s, synapse := range synapses {
-		psds := synapses[s].Psds
-		for p, psd := range psds {
+	for s, synapse := range (*tracing).Data {
+		pSynapse := &((*tracing).Data[s])
+		for p, psd := range (*pSynapse).Psds {
 			if xformed == nil {
-				psds[p].Uid = PsdUid(TbarUid(synapse.Tbar.Location), psd.Location)
+				(*pSynapse).Psds[p].Uid = PsdUid(
+					TbarUid(synapse.Tbar.Location), psd.Location)
 			} else {
 				i, found := uidMap[psd.Location]
 				if found {
-					psds[p].Uid = (*xformed).Data[i.synapseI].Psds[i.psdI].Uid
+					(*pSynapse).Psds[p].Uid =
+						(*xformed).Data[i.synapseI].Psds[i.psdI].Uid
 				} else {
 					log.Println("ERROR: No matching transformed PSD found",
 						"for PSD", psd.Location)
@@ -329,15 +332,15 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 	numTbarErrors := 0
 	alteredPsds := 0
 	alteredTbar := 0
-	synapses := (*tracing).Data
-	for s, _ := range synapses {
+	for s, synapse := range (*tracing).Data {
+		pSynapse := &((*tracing).Data[s])
 		// Alter T-bar location
 		var uid string
-		if synapses[s].Tbar.Uid == "" {
-			uid = TbarUid(synapses[s].Tbar.Location)
-			synapses[s].Tbar.Uid = uid
+		if synapse.Tbar.Uid == "" {
+			uid = TbarUid(synapse.Tbar.Location)
+			(*pSynapse).Tbar.Uid = uid
 		} else {
-			uid = synapses[s].Tbar.Uid
+			uid = synapse.Tbar.Uid
 		}
 		i, found := uidMap[uid]
 		if !found {
@@ -345,13 +348,11 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 			log.Printf("** Warning: No tbar uid %s with xformed synapse list!\n",
 				uid)
 		} else {
-			synapses[s].Tbar.Location = xformed.Data[i].Tbar.Location
+			(*pSynapse).Tbar.Location = xformed.Data[i].Tbar.Location
 			alteredTbar++
 
-			psds := synapses[s].Psds
-			xformedPsds := xformed.Data[i].Psds
-
 			// Get map of PSDs in transformed T-bar
+			xformedPsds := xformed.Data[i].Psds
 			xpsdMap := make(map[string]int)
 			for xp, xpsd := range xformedPsds {
 				if xpsd.Uid == "" {
@@ -363,10 +364,11 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 			}
 
 			// Transform current PSDs by matching xformed PSD uid
-			for p, psd := range psds {
+			for p, psd := range (*pSynapse).Psds {
+				pPsd := &((*pSynapse).Psds[p])
 				xp, found := xpsdMap[psd.Uid]
 				if found {
-					psds[p].Location = xformedPsds[xp].Location
+					(*pPsd).Location = xformedPsds[xp].Location
 					alteredPsds++
 				} else {
 					log.Printf("** Warning: No match for psd %s, uid %s\n",
@@ -376,7 +378,7 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 						log.Println("  ", xpsd.Uid, xpsd.Location)
 					}
 					numPsdErrors++
-					psds[p].TransformIssue = true
+					(*pPsd).TransformIssue = true
 				}
 			}
 		}
