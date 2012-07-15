@@ -100,6 +100,20 @@ func (bodyNote JsonBody) OrphanComment() bool {
 	return matched
 }
 
+func (bodyNote JsonBody) GetTracingResult(bodyId BodyId) TracingResult {
+	var tracingResult TracingResult
+	if len(bodyNote.Anchor) != 0 {
+		tracingResult = TracingResult(bodyId)
+	} else if bodyNote.AnchorComment() {
+		tracingResult = TracingResult(bodyId)
+	} else if bodyNote.OrphanComment() {
+		tracingResult = Orphan
+	} else {
+		tracingResult = Leaves
+	}
+	return tracingResult
+}
+
 // ReadBodiesJson returns a bodies structure corresponding to 
 // a JSON body annotation file.
 func ReadBodiesJson(filename string) (bodies *JsonBodies) {
@@ -147,12 +161,13 @@ type JsonSynapse struct {
 // assignment useful for analysis and tracking synapses through
 // transformations.
 type JsonTbar struct {
-	Location   Point3d `json:"location"`
-	Body       BodyId  `json:"body ID"`
-	Status     string  `json:"status,omitempty"`
-	Confidence float32 `json:"confidence,omitempty"`
-	Uid        string  `json:"uid,omitempty"`
-	Assignment string  `json:"assignment,omitempty"`
+	Location       Point3d `json:"location"`
+	Body           BodyId  `json:"body ID"`
+	UsedBodyRadius int     `json:"used body radius,omitempty"`
+	Status         string  `json:"status,omitempty"`
+	Confidence     float32 `json:"confidence,omitempty"`
+	Uid            string  `json:"uid,omitempty"`
+	Assignment     string  `json:"assignment,omitempty"`
 }
 
 // JsonPsd holds information for a post-synaptic density (PSD),
@@ -175,10 +190,10 @@ type JsonTracing struct {
 	Result         TracingResult `json:"result"`
 	Stack          string        `json:"stack id"`
 	AssignmentSet  int           `json:"assignment set"`
-	ExportedBody   BodyId        `json:"exported traced body"`
+	ExportedBody   BodyId        `json:"exported traced body,omitempty"`
+	UsedBodyRadius int           `json:"used body radius,omitempty"`
 	ExportedSize   int           `json:"exported traced body size,omitempty"`
 	BaseColumnBody BodyId        `json:"base column traced body,omitempty"`
-	Orig12kBody    BodyId        `json:"12k traced body,omitempty"`
 	ColumnOverlaps int           `json:"export->base overlap,omitempty"`
 	TargetOverlaps int           `json:"orig12k->target overlap,omitempty"`
 }

@@ -72,28 +72,30 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 
 	// Make a closure that adds a traced body to a PSD and modifies
 	// the psdBodies set.
-	addTracedBody := func(psd *JsonPsd, bodyId BodyId, bodyNote JsonBody) {
-		var tracingResult TracingResult
-		if len(bodyNote.Anchor) != 0 {
-			tracingResult = TracingResult(bodyId)
+	addTracedBody := func(psd *JsonPsd, bodyId BodyId, bodyNote JsonBody) (
+		pTracing *JsonTracing) {
+
+		tracingResult := bodyNote.GetTracingResult(bodyId)
+		if tracingResult > MinAnchor {
 			psdBodies[bodyId] = true
-		} else if bodyNote.AnchorComment() {
-			tracingResult = TracingResult(bodyId)
-			psdBodies[bodyId] = true
-		} else if bodyNote.OrphanComment() {
-			tracingResult = Orphan
-		} else {
-			tracingResult = Leaves
-		}
-		if len((*psd).Tracings) == 0 {
-			(*psd).Tracings = make([]JsonTracing, 2)
 		}
 		var tracing JsonTracing
 		tracing.Userid = userid
 		tracing.Result = tracingResult
 		tracing.Stack = StackDescription[stackId]
 		tracing.AssignmentSet = setnum
-		(*psd).Tracings = append((*psd).Tracings, tracing)
+		if tracingResult >= MinAnchor {
+			tracing.ExportedBody = bodyId
+		}
+		numTracings := len((*psd).Tracings)
+		if numTracings == 0 {
+			(*psd).Tracings = []JsonTracing{tracing}
+			pTracing = &((*psd).Tracings[0])
+		} else {
+			(*psd).Tracings = append((*psd).Tracings, tracing)
+			pTracing = &((*psd).Tracings[numTracings])
+		}
+		return pTracing
 	}
 
 	// Read in the assignment JSON: set of PSDs
@@ -122,6 +124,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 			log.Println("Warning: T-bar", synapses[s].Tbar.Location,
 				"was on ZERO SUPERPIXEL but assigned to body",
 				tbarBody, "at radius", radius, "from T-bar point")
+			synapses[s].Tbar.UsedBodyRadius = radius
 		}
 		// Make first pass through all PSDs
 		excludeBodies[tbarBody] = true
@@ -136,7 +139,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 			}
 			bodyNote, found := annotations[bodyId]
 			if found {
-				addTracedBody(&(psds[p]), bodyId, bodyNote)
+				_ = addTracedBody(&(psds[p]), bodyId, bodyNote)
 			} else {
 				noBodyAnnotated++
 				log.Println("Warning: PSD ", psds[p].Location, " -> ",
@@ -163,7 +166,8 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 					}
 					bodyNote, found := annotations[bodyId]
 					if found {
-						addTracedBody(&(psds[p]), bodyId, bodyNote)
+						pTracing := addTracedBody(&(psds[p]), bodyId, bodyNote)
+						(*pTracing).UsedBodyRadius = radius
 					} else {
 						noBodyAnnotated++
 						log.Println("Warning: Ambiguous PSD", psds[p].Location,
@@ -183,7 +187,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 
 // TransformBodies applies a body->body map to transform any traced bodies.
 func (tracing *JsonSynapses) TransformBodies(matchedBodyMap BestOverlapMap,
-	stack StackId) (psdBodies BodySet) {
+	stackId StackId) (psdBodies BodySet) {
 
 	psdBodies = make(BodySet)
 	numErrors := 0
@@ -197,12 +201,17 @@ func (tracing *JsonSynapses) TransformBodies(matchedBodyMap BestOverlapMap,
 				if tracing.Result != Orphan && tracing.Result != Leaves &&
 					tracing.Result != 0 {
 
-					origBody := BodyId(tracing.Result)
+					var origBody BodyId
+					if stackId != Target12k {
+						origBody = tracing.ExportedBody
+					} else {
+						origBody = tracing.BaseColumnBody
+					}
 					match, found := matchedBodyMap[origBody]
 					if !found {
 						log.Println("ERROR: Body->body map does not contain",
 							"body", tracing.Result, "for", tracing.Userid,
-							"tracing PSD", psd)
+							"tracing PSD", psd.Location)
 						psds[p].TransformIssue = true
 						numErrors++
 					} else {
@@ -213,14 +222,13 @@ func (tracing *JsonSynapses) TransformBodies(matchedBodyMap BestOverlapMap,
 						} else {
 							unaltered++
 						}
-						switch stack {
+						switch stackId {
 						case Distal, Proximal:
-							psds[p].Tracings[t].ExportedBody = origBody
 							psds[p].Tracings[t].BaseColumnBody = match.MatchedBody
 							psds[p].Tracings[t].ColumnOverlaps = match.OverlapSize
+							psds[p].Tracings[t].ExportedSize = match.MaxOverlap
 						case Target12k:
 							psds[p].Tracings[t].Result = TracingResult(match.MatchedBody)
-							psds[p].Tracings[t].Orig12kBody = origBody
 							psds[p].Tracings[t].TargetOverlaps = match.OverlapSize
 						}
 						psdBodies[match.MatchedBody] = true

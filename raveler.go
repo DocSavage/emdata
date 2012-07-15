@@ -485,6 +485,7 @@ type OverlapsMap map[BodyId]Overlaps
 type BestOverlap struct {
 	MatchedBody BodyId
 	OverlapSize int
+	MaxOverlap  int // What is maximum size of OverlapSize (100% overlap)
 }
 
 type BestOverlapMap map[BodyId]BestOverlap
@@ -546,6 +547,7 @@ func OverlapAnalysis(stack1 MappedStack, stack2 MappedStack, bodySet BodySet) (
 	// Construct matching map from maximal overlaps
 	matchingMap = make(BestOverlapMap)
 	for bodyId1, overlaps := range overlapsMap {
+		maximumOverlap := len(body1ToSpMap[bodyId1])
 		var largest int
 		var matchedBodyId BodyId
 		for bodyId2, count := range overlaps {
@@ -558,7 +560,8 @@ func OverlapAnalysis(stack1 MappedStack, stack2 MappedStack, bodySet BodySet) (
 			log.Println("** Warning: Could not find overlapping body ",
 				"for body ", bodyId1)
 		}
-		matchingMap[bodyId1] = BestOverlap{matchedBodyId, largest}
+		matchingMap[bodyId1] = BestOverlap{matchedBodyId, largest,
+			maximumOverlap}
 	}
 	return
 }
