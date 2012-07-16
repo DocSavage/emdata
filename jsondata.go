@@ -136,8 +136,8 @@ func ReadBodiesJson(filename string) (bodies *JsonBodies) {
 // JsonSynapses is the high-level structure for an entire
 // synapse annotation list
 type JsonSynapses struct {
-	Metadata map[string]interface{}
-	Data     []JsonSynapse `json:"data,omitempty"`
+	Metadata map[string]interface{} `json:"metadata"`
+	Data     []JsonSynapse          `json:"data,omitempty"`
 }
 
 // WriteJson writes indented JSON synapse annotation list to writer
