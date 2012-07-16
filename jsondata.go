@@ -44,13 +44,16 @@ import (
 	"time"
 )
 
-func CreateMetadata(description string) (metadata map[string]interface{}) {
+func CreateMetadata(description string) (
+	metadata map[string]interface{}) {
+
 	user, _ := user.Current()
 	metadata = make(map[string]interface{})
 	metadata["username"] = user.Username
 	metadata["date"] = time.Now().Format("02-January-2006 15:04")
 	metadata["computer"], _ = os.Hostname()
 	metadata["software"] = os.Args[0]
+	metadata["parameters"] = os.Args[1:]
 	metadata["description"] = description
 	metadata["file version"] = 1 // Necessary for Raveler
 	return

@@ -149,7 +149,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 			} else {
 				noBodyAnnotated++
 				log.Println("Warning: PSD ", psd.Location, " -> ",
-					"exported body ", bodyId, " cannot be found in ",
+					"exported body ", bodyId, " cannot be found in",
 					"body annotation file for exported stack... skipping")
 			}
 		}

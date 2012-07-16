@@ -237,7 +237,11 @@ func AssignmentExportDir(location StackId, userid string,
 	case Distal:
 		dir = filepath.Join(DistalExportDir, dir)
 	case Proximal:
-		dir = filepath.Join(SeamlessExportDir, dir)
+		if userid == "sigmundc" && setnum == 2 {
+			dir = "/groups/flyem/proj/data/proofread_data/pat/sigmundc.synapse2.second_export"
+		} else {
+			dir = filepath.Join(SeamlessExportDir, dir)
+		}
 	default:
 		log.Fatalln("FATAL ERROR: Unknown substack", location,
 			"in AssignmentExportDir()")
