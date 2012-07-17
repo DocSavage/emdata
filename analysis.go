@@ -32,10 +32,73 @@
 package emdata
 
 import (
+	"encoding/csv"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"strconv"
 )
+
+// NamedBody encapsulates data for a segmented body that has enough
+// shape to distinguish its morphology as a likely cell type.
+// body ID,name,cell type,location,primary for connectome,secondary for connectome,comment
+type NamedBody struct {
+	Body        BodyId
+	Name        string
+	CellType    string
+	Location    string
+	IsPrimary   bool
+	IsSecondary bool
+	Locked      bool
+}
+
+type NamedBodyMap map[BodyId]NamedBody
+
+// ReadNamedBodiesCsv reads in a named bodies CSV file and returns
+// a map from BodyID to NamedBody struct.  The first line is
+// assumed to be a header and is skipped.
+func ReadNamedBodiesCsv(filename string) (namedBodyMap NamedBodyMap) {
+	namedBodyMap = make(NamedBodyMap)
+	var namedFile *os.File
+	namedFile, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("FATAL ERROR: Could not open named bodies file: %s [%s]",
+			filename, err)
+	}
+	defer namedFile.Close()
+	reader := csv.NewReader(namedFile)
+	items, err := reader.Read() // Get header
+	for {
+		items, err = reader.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil || items[0] == "" {
+			continue
+		} else {
+			var namedBody NamedBody
+			i, err := strconv.Atoi(items[0])
+			namedBody.Body = BodyId(i)
+			if err != nil {
+				log.Println("Skipping named body line:", items)
+				continue
+			}
+			fmt.Println(items[1], namedBody.Body)
+			namedBody.Name = items[1]
+			namedBody.CellType = items[2]
+			namedBody.Location = items[3]
+			namedBody.IsPrimary = (items[4] == "primary")
+			namedBody.IsSecondary = (items[5] == "secondary")
+			if len(items) >= 7 && items[6] == "lock" {
+				namedBody.Locked = true
+			}
+			namedBodyMap[namedBody.Body] = namedBody
+		}
+	}
+	log.Println("Read", len(namedBodyMap), "named bodies from file:",
+		filename)
+	return
+}
 
 // TracingResult gives the result of a proofreader tracing a process.
 // Expected results are Orphan, Leaves (exits image volume), or

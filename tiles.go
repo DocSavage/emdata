@@ -77,12 +77,12 @@ func ReadSuperpixelTile(stack TiledJsonStack, relTilePath string) (
 	if err != nil {
 		log.Fatal("FATAL ERROR: opening ", filename, ": ", err)
 	}
-	defer file.Close()
 
 	superpixels, format, err = image.Decode(file)
 	if err != nil {
 		log.Fatal("FATAL ERROR: decoding ", filename, ": ", err)
 	}
+	file.Close()
 	return
 }
 

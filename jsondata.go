@@ -126,6 +126,7 @@ func ReadBodiesJson(filename string) (bodies *JsonBodies) {
 		log.Fatalf("FATAL ERROR: Failed to open JSON file: %s [%s]",
 			filename, err)
 	}
+	defer file.Close()
 	dec := json.NewDecoder(file)
 	if err := dec.Decode(&bodies); err == io.EOF {
 		log.Fatalf("FATAL ERROR: No data in JSON file: %s\n", filename)
@@ -244,6 +245,7 @@ func ReadSynapsesJson(filename string) *JsonSynapses {
 		log.Fatalf("FATAL ERROR: Failed to open JSON file: %s [%s]",
 			filename, err)
 	}
+	defer file.Close()
 	dec := json.NewDecoder(file)
 	var synapses *JsonSynapses
 	if err := dec.Decode(&synapses); err == io.EOF {

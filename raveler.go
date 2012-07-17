@@ -88,6 +88,7 @@ func ReadSuperpixelBounds(filename string, superpixelSet map[Superpixel]bool) (
 		log.Printf("Could not open superpixel bounds: %s\n", filename)
 		return
 	}
+	defer file.Close()
 	spBoundsMap = make(SuperpixelBoundsMap)
 	linenum := 0
 	lineReader := bufio.NewReader(file)
@@ -185,6 +186,7 @@ func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
 		if err != nil {
 			log.Fatalf("FATAL ERROR: Could not open %s: %s", filename, err)
 		}
+		defer file.Close()
 		linenum := 0
 		lineReader := bufio.NewReader(file)
 		for {
@@ -221,6 +223,7 @@ func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
 		if err != nil {
 			log.Fatalf("FATAL ERROR: Could not open %s", filename)
 		}
+		defer file.Close()
 		linenum := 0
 		lineReader := bufio.NewReader(file)
 		for {
@@ -427,6 +430,7 @@ func (stack BaseStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
 		log.Fatalf("FATAL ERROR: Could not open tiles/metadata.txt file: %s",
 			filename)
 	}
+	defer file.Close()
 	var bounds Bounds3d
 	var superpixelFormat SuperpixelFormat = SuperpixelNone
 	minZUnset := true
