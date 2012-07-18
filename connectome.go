@@ -33,14 +33,21 @@ package emdata
 
 import (
 	"bufio"
+	"encoding/csv"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"strconv"
 )
 
+// Connectome holds the strength of connections between two body ids
+// in a directed fashion.  The first key is the pre-synaptic body
+// and the second is the post-synaptic body id.
 type Connectome map[BodyId](map[BodyId]int)
 
+// AddConnection adds a (pre, post) connection of given strength
+// to a connectome.
 func (c *Connectome) AddConnection(pre, post BodyId, strength int) {
 	if len(*c) == 0 {
 		*c = make(Connectome)
@@ -59,6 +66,7 @@ func (c *Connectome) AddConnection(pre, post BodyId, strength int) {
 	}
 }
 
+// Add returns a connectome that's the sum of two connectomes.
 func (c1 Connectome) Add(c2 Connectome) (sum Connectome) {
 	sum = make(Connectome)
 	for body1, connections := range c1 {
@@ -75,6 +83,9 @@ func (c1 Connectome) Add(c2 Connectome) (sum Connectome) {
 	return
 }
 
+// WriteMatlab writes connectome data as Matlab code for a
+// containers.Map() data structure.  Key names are body names
+// within the passed NamedBodyMap.
 func (c Connectome) WriteMatlab(writer io.Writer, connectomeName string,
 	namedBodyMap NamedBodyMap) {
 
@@ -88,24 +99,25 @@ func (c Connectome) WriteMatlab(writer io.Writer, connectomeName string,
 	}
 	for bodyId1, namedBody1 := range namedBodyMap {
 		for bodyId2, namedBody2 := range namedBodyMap {
-			key := namedBody1.Name + "/" + namedBody2.Name
-			strength := 0
+			key := namedBody1.Name + "," + namedBody2.Name
 			connections, preFound := c[bodyId1]
 			if preFound {
-				value, postFound := connections[bodyId2]
+				strength, postFound := connections[bodyId2]
 				if postFound {
-					strength = value
+					_, err := fmt.Fprintf(bufferedWriter, "%s('%s') = %d\n",
+						connectomeName, key, strength)
+					if err != nil {
+						log.Fatalln("ERROR: Unable to write matlab code:",
+							err)
+					}
 				}
-			}
-			_, err := fmt.Fprintf(bufferedWriter, "%s('%s') = %d\n",
-				connectomeName, key, strength)
-			if err != nil {
-				log.Fatalf("ERROR: Unable to write matlab code: %s", err)
 			}
 		}
 	}
 }
 
+// WriteMatlabFile writes connectome data as Matlab code for a
+// containers.Map() data structure into the given filename.
 func (c Connectome) WriteMatlabFile(filename string, connectomeName string,
 	namedBodyMap NamedBodyMap) {
 
@@ -115,5 +127,62 @@ func (c Connectome) WriteMatlabFile(filename string, connectomeName string,
 			filename, err)
 	}
 	c.WriteMatlab(file, connectomeName, namedBodyMap)
+	file.Close()
+}
+
+// WriteCsv writes connectome data in CSV format with body names as
+// headers for rows/columns
+func (c Connectome) WriteCsv(writer io.Writer, namedBodyMap NamedBodyMap) {
+
+	csvWriter := csv.NewWriter(writer)
+
+	// Print body names along first row
+	numBodies := len(namedBodyMap)
+	numCells := numBodies + 1 // Leave 1 cell for header of row/col
+	record := make([]string, numCells)
+	n := 1
+	for _, namedBody := range namedBodyMap {
+		record[n] = namedBody.Name
+		n++
+	}
+	err := csvWriter.Write(record)
+	if err != nil {
+		log.Fatalln("ERROR: Unable to write body names as CSV:", err)
+	}
+
+	// For every subsequent row, the first column is body name,
+	// and the rest are the strengths of (pre, post) where pre body
+	// name is listed in 1st column.
+	for bodyId1, namedBody1 := range namedBodyMap {
+		record[0] = namedBody1.Name
+		n := 1
+		for bodyId2, _ := range namedBodyMap {
+			strength := 0
+			connections, preFound := c[bodyId1]
+			if preFound {
+				value, postFound := connections[bodyId2]
+				if postFound {
+					strength = value
+				}
+			}
+			record[n] = strconv.Itoa(strength)
+			n++
+		}
+		err := csvWriter.Write(record)
+		if err != nil {
+			log.Fatalln("ERROR: Unable to write line of CSV for ",
+				"presynaptic body", namedBody1.Name, ":", err)
+		}
+	}
+}
+
+// WriteCsvFile writes connectome data into a CSV file.
+func (c Connectome) WriteCsvFile(filename string, namedBodyMap NamedBodyMap) {
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatalf("ERROR: Failed to create connectome csv file: %s [%s]\n",
+			filename, err)
+	}
+	c.WriteCsv(file, namedBodyMap)
 	file.Close()
 }
