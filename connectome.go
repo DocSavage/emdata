@@ -32,27 +32,88 @@
 package emdata
 
 import (
-//	"fmt"
-//	"log"
-//	"strconv"
+	"bufio"
+	"fmt"
+	"io"
+	"log"
+	"os"
 )
 
 type Connectome map[BodyId](map[BodyId]int)
 
-func (connectome Connectome) AddConnection(pre, post BodyId) {
-	if len(connectome) == 0 {
-		connectome = make(Connectome)
+func (c *Connectome) AddConnection(pre, post BodyId, strength int) {
+	if len(*c) == 0 {
+		*c = make(Connectome)
 	}
-	connections, preFound := connectome[pre]
+	connections, preFound := (*c)[pre]
 	if preFound {
 		_, postFound := connections[post]
 		if postFound {
-			connectome[pre][post]++
+			(*c)[pre][post] += strength
 		} else {
-			connectome[pre][post] = 1
+			(*c)[pre][post] = strength
 		}
 	} else {
-		connectome[pre] = make(map[BodyId]int)
-		connectome[pre][post] = 1
+		(*c)[pre] = make(map[BodyId]int)
+		(*c)[pre][post] = strength
 	}
+}
+
+func (c1 Connectome) Add(c2 Connectome) (sum Connectome) {
+	sum = make(Connectome)
+	for body1, connections := range c1 {
+		sum[body1] = make(map[BodyId]int)
+		for body2, strength := range connections {
+			sum[body1][body2] = strength
+		}
+	}
+	for body1, connections := range c2 {
+		for body2, strength := range connections {
+			sum.AddConnection(body1, body2, strength)
+		}
+	}
+	return
+}
+
+func (c Connectome) WriteMatlab(writer io.Writer, connectomeName string,
+	namedBodyMap NamedBodyMap) {
+
+	bufferedWriter := bufio.NewWriter(writer)
+	defer bufferedWriter.Flush()
+
+	_, err := fmt.Fprintf(bufferedWriter, "%s = containers.Map()\n",
+		connectomeName)
+	if err != nil {
+		log.Fatalf("ERROR: Unable to write matlab code: %s", err)
+	}
+	for bodyId1, namedBody1 := range namedBodyMap {
+		for bodyId2, namedBody2 := range namedBodyMap {
+			key := namedBody1.Name + "/" + namedBody2.Name
+			strength := 0
+			connections, preFound := c[bodyId1]
+			if preFound {
+				value, postFound := connections[bodyId2]
+				if postFound {
+					strength = value
+				}
+			}
+			_, err := fmt.Fprintf(bufferedWriter, "%s('%s') = %d\n",
+				connectomeName, key, strength)
+			if err != nil {
+				log.Fatalf("ERROR: Unable to write matlab code: %s", err)
+			}
+		}
+	}
+}
+
+func (c Connectome) WriteMatlabFile(filename string, connectomeName string,
+	namedBodyMap NamedBodyMap) {
+
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatalf("FATAL ERROR: Failed to create connectome matlab file: %s [%s]\n",
+			filename, err)
+	}
+	c.WriteMatlab(file, connectomeName, namedBodyMap)
+	file.Close()
 }

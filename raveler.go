@@ -279,12 +279,12 @@ type Stack struct {
 }
 
 // String returns the path of this stack
-func (stack Stack) String() string {
+func (stack *Stack) String() string {
 	return stack.Directory
 }
 
 // MapLoaded returns true if a superpixel->body mapping is available.
-func (stack Stack) MapLoaded() bool {
+func (stack *Stack) MapLoaded() bool {
 	return stack.mapLoaded
 }
 
@@ -401,7 +401,8 @@ func (stack1 *Stack) SuperpixelBoundsChanged(stack2 *Stack,
 }
 
 // CreateBaseStack initializes a BaseStack from a directory
-func CreateBaseStack(directory string) (stack BaseStack) {
+func CreateBaseStack(directory string) (stack *BaseStack) {
+	stack = new(BaseStack)
 	stack.Directory = directory
 	return stack
 }
@@ -412,17 +413,17 @@ type BaseStack struct {
 	Stack
 }
 
-func (stack BaseStack) StackSynapsesJsonFilename() string {
+func (stack *BaseStack) StackSynapsesJsonFilename() string {
 	return StackSynapsesJsonFilename(stack.Directory)
 }
 
-func (stack BaseStack) StackBodiesJsonFilename() string {
+func (stack *BaseStack) StackBodiesJsonFilename() string {
 	return StackBodiesJsonFilename(stack.Directory)
 }
 
 // TilesMetadata retrieves the 3d bounding box and superpixel format 
 // of a stack from the tiles/metadata.txt file.
-func (stack BaseStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
+func (stack *BaseStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
 
 	filename := filepath.Join(stack.Directory, "tiles", "metadata.txt")
 	file, err := os.Open(filename)
@@ -578,10 +579,11 @@ type Session struct {
 }
 
 // CreateExportedStack initializes a ExportedStack from a directory
-func CreateExportedStack(dir, baseDir string) (stack ExportedStack) {
+func CreateExportedStack(dir, baseDir string) (stack *ExportedStack) {
+	stack = new(ExportedStack)
 	stack.Directory = dir
 	stack.Base.Directory = baseDir
-	return stack
+	return
 }
 
 // ExportedStack corresponds to a legacy exported session with a base stack
@@ -590,16 +592,16 @@ type ExportedStack struct {
 	Base BaseStack
 }
 
-func (stack ExportedStack) StackSynapsesJsonFilename() string {
+func (stack *ExportedStack) StackSynapsesJsonFilename() string {
 	return StackSynapsesJsonFilename(stack.Directory)
 }
 
-func (stack ExportedStack) StackBodiesJsonFilename() string {
+func (stack *ExportedStack) StackBodiesJsonFilename() string {
 	return StackBodiesJsonFilename(stack.Directory)
 }
 
 // TilesMetadata returns tiles metadata from the base stack of
 // an exported stack.
-func (stack ExportedStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
+func (stack *ExportedStack) TilesMetadata() (Bounds3d, SuperpixelFormat) {
 	return stack.Base.TilesMetadata()
 }

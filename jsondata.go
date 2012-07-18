@@ -86,7 +86,7 @@ type JsonBody struct {
 
 // AnchorComment returns true if "Anchor Body" appears in the
 // body comments.
-func (bodyNote JsonBody) AnchorComment() bool {
+func (bodyNote *JsonBody) AnchorComment() bool {
 	matched, err := regexp.MatchString(".*[Aa]nchor [Bb]ody.*", bodyNote.Comment)
 	if err != nil {
 		log.Fatalf("FATAL ERROR: AnchorComment(): %s\n", err)
@@ -95,7 +95,7 @@ func (bodyNote JsonBody) AnchorComment() bool {
 }
 
 // OrphanComment returns true if "orphan" appears in the body comments.
-func (bodyNote JsonBody) OrphanComment() bool {
+func (bodyNote *JsonBody) OrphanComment() bool {
 	matched, err := regexp.MatchString(".*[Oo]rphan.*", bodyNote.Comment)
 	if err != nil {
 		log.Fatalf("FATAL ERROR: OrphanComment(): %s\n", err)
@@ -103,7 +103,7 @@ func (bodyNote JsonBody) OrphanComment() bool {
 	return matched
 }
 
-func (bodyNote JsonBody) GetTracingResult(bodyId BodyId) TracingResult {
+func (bodyNote *JsonBody) GetTracingResult(bodyId BodyId) TracingResult {
 	var tracingResult TracingResult
 	if len(bodyNote.Anchor) != 0 {
 		tracingResult = TracingResult(bodyId)
@@ -145,7 +145,7 @@ type JsonSynapses struct {
 }
 
 // WriteJson writes indented JSON synapse annotation list to writer
-func (synapses JsonSynapses) WriteJson(writer io.Writer) {
+func (synapses *JsonSynapses) WriteJson(writer io.Writer) {
 	m, err := json.Marshal(synapses)
 	if err != nil {
 		log.Fatalf("Error in writing json: %s", err)
@@ -203,7 +203,7 @@ type JsonTracing struct {
 }
 
 // GetTracingIndex returns the index of the PSD given a PSD uid. 
-func (synapse JsonSynapse) GetPsdIndex(psdUid string) (index int, found bool) {
+func (synapse *JsonSynapse) GetPsdIndex(psdUid string) (index int, found bool) {
 	for i, psd := range synapse.Psds {
 		if psd.Uid == psdUid {
 			return i, true

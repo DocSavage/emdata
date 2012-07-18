@@ -129,14 +129,14 @@ type TracingAgent string
 // CreatePsdTracing creates a PsdTracing struct by examining each assigned
 // location and determining the exported body ID of the stack for that location.
 func CreatePsdTracing(stackId StackId, userid string, setnum int,
-	exportedStack ExportedStack, baseStack BaseStack) (
+	exportedStack *ExportedStack, baseStack *BaseStack) (
 	tracing *JsonSynapses, psdBodies BodySet) {
 
 	psdBodies = make(BodySet) // Set of all PSD bodies
 
 	// Make a closure that adds a traced body to a PSD and modifies
 	// the psdBodies set.
-	addTracedBody := func(psd *JsonPsd, bodyId BodyId, bodyNote JsonBody) (
+	addTracedBody := func(psd *JsonPsd, bodyId BodyId, bodyNote *JsonBody) (
 		pTracing *JsonTracing) {
 
 		tracingResult := bodyNote.GetTracingResult(bodyId)
@@ -184,7 +184,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 			StackDescription[stackId], setnum)
 		excludeBodies := make(BodySet)
 		curPsdBodies := make(BodySet)
-		tbarBody, radius := GetNearestBodyOfLocation(&exportedStack,
+		tbarBody, radius := GetNearestBodyOfLocation(exportedStack,
 			synapses[s].Tbar.Location, excludeBodies, curPsdBodies)
 		if radius > 0 {
 			log.Println("Warning: T-bar", synapses[s].Tbar.Location,
@@ -197,8 +197,8 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 		ambiguous := []int{}
 		for p, psd := range synapses[s].Psds {
 			totalPsds++
-			bodyId := GetBodyOfLocation(&exportedStack, psd.Location)
-			if bodyId != GetBodyOfLocation(&baseStack, psd.Location) {
+			bodyId := GetBodyOfLocation(exportedStack, psd.Location)
+			if bodyId != GetBodyOfLocation(baseStack, psd.Location) {
 				psdsChanged++
 			}
 			if bodyId == 0 {
@@ -208,7 +208,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 			}
 			bodyNote, found := annotations[bodyId]
 			if found {
-				_ = addTracedBody(&(synapses[s].Psds[p]), bodyId, bodyNote)
+				_ = addTracedBody(&(synapses[s].Psds[p]), bodyId, &bodyNote)
 			} else {
 				noBodyAnnotated++
 				log.Println("Warning: PSD ", psd.Location, " -> ",
@@ -220,7 +220,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 		if len(ambiguous) > 0 {
 			for _, p := range ambiguous {
 				pPsd := &(synapses[s].Psds[p])
-				bodyId, radius := GetNearestBodyOfLocation(&exportedStack,
+				bodyId, radius := GetNearestBodyOfLocation(exportedStack,
 					pPsd.Location, excludeBodies, curPsdBodies)
 				if bodyId == 0 {
 					pPsd.BodyIssue = true
@@ -236,7 +236,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 					}
 					bodyNote, found := annotations[bodyId]
 					if found {
-						pTracing := addTracedBody(pPsd, bodyId, bodyNote)
+						pTracing := addTracedBody(pPsd, bodyId, &bodyNote)
 						pTracing.UsedBodyRadius = radius
 					} else {
 						noBodyAnnotated++
@@ -268,16 +268,16 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 }
 
 // TransformBodies applies a body->body map to transform any traced bodies.
-func (tracing *JsonSynapses) TransformBodies(matchedBodyMap BestOverlapMap,
+func (synapses *JsonSynapses) TransformBodies(matchedBodyMap BestOverlapMap,
 	stackId StackId) (psdBodies BodySet) {
 
 	psdBodies = make(BodySet)
 	numErrors := 0
 	altered := 0
 	unaltered := 0
-	for s, synapse := range tracing.Data {
+	for s, synapse := range synapses.Data {
 		for p, psd := range synapse.Psds {
-			pPsd := &(tracing.Data[s].Psds[p])
+			pPsd := &(synapses.Data[s].Psds[p])
 			for t, tracing := range pPsd.Tracings {
 				if tracing.Result != Orphan && tracing.Result != Leaves &&
 					tracing.Result != 0 {
@@ -332,7 +332,7 @@ type PsdSignature struct {
 	Z    VoxelCoord
 }
 
-func (signature PsdSignature) String() string {
+func (signature *PsdSignature) String() string {
 	return fmt.Sprintf("{ Body: %d, Z: %d }", signature.Body, signature.Z)
 }
 
@@ -344,7 +344,7 @@ type psdIndex struct {
 // AddPsdUids modifies a synapse annotation list to include "uid" tags
 // for each PSD, either generated from the PSD location or from a matching
 // PSD's uid in a given synapse file.
-func (tracing *JsonSynapses) AddPsdUids(xformed *JsonSynapses) {
+func (synapses *JsonSynapses) AddPsdUids(xformed *JsonSynapses) {
 	// If we have a transformed synapse list, create an index using
 	// PSD location
 	uidMap := make(map[Point3d]psdIndex)
@@ -357,8 +357,8 @@ func (tracing *JsonSynapses) AddPsdUids(xformed *JsonSynapses) {
 	}
 
 	// Go through all our PSDs and add uids
-	for s, synapse := range tracing.Data {
-		pSynapse := &(tracing.Data[s])
+	for s, synapse := range synapses.Data {
+		pSynapse := &(synapses.Data[s])
 		for p, psd := range pSynapse.Psds {
 			if xformed == nil {
 				pSynapse.Psds[p].Uid = PsdUid(
@@ -380,7 +380,7 @@ func (tracing *JsonSynapses) AddPsdUids(xformed *JsonSynapses) {
 // TransformSynapses modifies synapse locations (T-bar and PSDs) based
 // on a transformed synapses annotation list with 'uid' tags for both
 // T-bars and PSDs.
-func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
+func (synapses *JsonSynapses) TransformSynapses(xformed *JsonSynapses) {
 
 	// Construct a lookup map based on 'uid' tag that points to synapse #
 	// in the xformed list
@@ -395,8 +395,8 @@ func (tracing *JsonSynapses) TransformSynapses(xformed JsonSynapses) {
 	numTbarErrors := 0
 	alteredPsds := 0
 	alteredTbar := 0
-	for s, synapse := range (*tracing).Data {
-		pSynapse := &((*tracing).Data[s])
+	for s, synapse := range synapses.Data {
+		pSynapse := &(synapses.Data[s])
 		// Alter T-bar location
 		var uid string
 		if synapse.Tbar.Uid == "" {
