@@ -227,15 +227,15 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 				ambiguous = append(ambiguous, p)
 			} else {
 				curPsdBodies[bodyId] = true
-			}
-			bodyNote, found := annotations[bodyId]
-			if found {
-				_ = addTracedBody(&(synapses[s].Psds[p]), bodyId, &bodyNote)
-			} else {
-				noBodyAnnotated++
-				log.Println("Warning: PSD ", psd.Location, " -> ",
-					"exported body ", bodyId, " cannot be found in",
-					"body annotation file for exported stack... skipping")
+				bodyNote, found := annotations[bodyId]
+				if found {
+					_ = addTracedBody(&(synapses[s].Psds[p]), bodyId, &bodyNote)
+				} else {
+					noBodyAnnotated++
+					log.Println("Warning: PSD ", psd.Location, " -> ",
+						"exported body ", bodyId, " cannot be found in",
+						"body annotation file for exported stack... skipping")
+				}
 			}
 		}
 		// Handle ambiguous PSDs, i.e. ones on zero superpixels.
