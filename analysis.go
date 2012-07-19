@@ -87,29 +87,32 @@ func ReadNamedBodiesCsv(filename string) (namedBodyMap NamedBodyMap) {
 	}
 	defer namedFile.Close()
 	reader := csv.NewReader(namedFile)
-	items, err := reader.Read() // Get header
 	for {
-		items, err = reader.Read()
+		items, err := reader.Read()
 		if err == io.EOF {
 			break
 		} else if err != nil || items[0] == "" {
 			continue
+		} else if items[0] == "body ID" {
+			// Discard header
+			log.Println("Detected Named Bodies CSV with header.  Ignoring first line.")
 		} else {
 			var namedBody NamedBody
-			i, err := strconv.Atoi(items[0])
-			namedBody.Body = BodyId(i)
+			id, err := strconv.Atoi(items[0])
 			if err != nil {
-				log.Println("Skipping named body line:", items)
+				log.Println("Warning: Can't parse, skipping named body line:", items)
 				continue
 			}
-			fmt.Println(items[1], namedBody.Body)
+			namedBody.Body = BodyId(id)
 			namedBody.Name = items[1]
-			namedBody.CellType = items[2]
-			namedBody.Location = items[3]
-			namedBody.IsPrimary = (items[4] == "primary")
-			namedBody.IsSecondary = (items[5] == "secondary")
-			if len(items) >= 7 && items[6] == "lock" {
-				namedBody.Locked = true
+			if len(items) > 2 {
+				namedBody.CellType = items[2]
+				namedBody.Location = items[3]
+				namedBody.IsPrimary = (items[4] == "primary")
+				namedBody.IsSecondary = (items[5] == "secondary")
+				if len(items) >= 7 && items[6] == "lock" {
+					namedBody.Locked = true
+				}
 			}
 			namedBodyMap[namedBody.Body] = namedBody
 		}
