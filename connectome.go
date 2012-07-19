@@ -46,6 +46,11 @@ import (
 // and the second is the post-synaptic body id.
 type Connectome map[BodyId](map[BodyId]int)
 
+// NamedConnectome holds strength of connections between two bodies
+// that are identified using names (strings) instead of body ids as
+// in the Connectome type.
+type NamedConnectome map[string](map[string]int)
+
 // AddConnection adds a (pre, post) connection of given strength
 // to a connectome.
 func (c *Connectome) AddConnection(pre, post BodyId, strength int) {
@@ -187,4 +192,78 @@ func (c Connectome) WriteCsvFile(filename string, namedBodyMap NamedBodyMap) {
 	}
 	c.WriteCsv(file, namedBodyMap)
 	file.Close()
+}
+
+// WriteCsv writes connectome data in CSV format with body names as
+// headers for rows/columns
+func ReadCsv(reader io.Reader) (nc *NamedConnectome) {
+	nc = new(NamedConnectome)
+	csvReader := csv.NewReader(reader)
+
+	// Read the body names in first row.
+	bodyNames, err := csvReader.Read()
+	if err == io.EOF {
+		log.Fatalln("ERROR: Unable to read first line of connectome CSV:",
+			err)
+	}
+
+	// Read all connectivity matrix
+	for {
+		items, err := csvReader.Read()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			log.Println("Warning: error reading CSV file, skipping line:", err)
+			log.Println("Skipped line:\n", items)
+		} else if items[0] == "" {
+			continue
+		} else if len(items) != len(bodyNames) {
+			log.Fatalf("ERROR: CSV has inconsistent # of columns (%d vs %d)!",
+				len(bodyNames), len(items))
+		} else {
+			preName := items[0]
+			for i := 1; i < len(items); i++ {
+				postName := bodyNames[i]
+				strength, err := strconv.Atoi(items[i])
+				if err != nil {
+					log.Fatalln("ERROR: Could not parse CSV line:",
+						items, "\nError:", err)
+				}
+				nc.AddConnection(preName, postName, strength)
+			}
+		}
+	}
+	return
+}
+
+// WriteCsvFile writes connectome data into a CSV file.
+func ReadCsvFile(filename string) (nc *NamedConnectome) {
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("ERROR: Failed to open connectome csv file: %s [%s]\n",
+			filename, err)
+	}
+	defer file.Close()
+	nc = ReadCsv(file)
+	return
+}
+
+// AddConnection adds a (pre, post) connection of given strength
+// to a connectome.
+func (nc *NamedConnectome) AddConnection(pre, post string, strength int) {
+	if len(*nc) == 0 {
+		*nc = make(NamedConnectome)
+	}
+	connections, preFound := (*nc)[pre]
+	if preFound {
+		_, postFound := connections[post]
+		if postFound {
+			(*nc)[pre][post] += strength
+		} else {
+			(*nc)[pre][post] = strength
+		}
+	} else {
+		(*nc)[pre] = make(map[string]int)
+		(*nc)[pre][post] = strength
+	}
 }
