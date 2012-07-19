@@ -97,12 +97,13 @@ func (c Connectome) WriteMatlab(writer io.Writer, connectomeName string,
 	if err != nil {
 		log.Fatalf("ERROR: Unable to write matlab code: %s", err)
 	}
-	for bodyId1, namedBody1 := range namedBodyMap {
-		for bodyId2, namedBody2 := range namedBodyMap {
+	namedBodyList := namedBodyMap.SortByName()
+	for _, namedBody1 := range namedBodyList {
+		for _, namedBody2 := range namedBodyList {
 			key := namedBody1.Name + "," + namedBody2.Name
-			connections, preFound := c[bodyId1]
+			connections, preFound := c[namedBody1.Body]
 			if preFound {
-				strength, postFound := connections[bodyId2]
+				strength, postFound := connections[namedBody2.Body]
 				if postFound {
 					_, err := fmt.Fprintf(bufferedWriter, "%s('%s') = %d\n",
 						connectomeName, key, strength)
@@ -135,13 +136,14 @@ func (c Connectome) WriteMatlabFile(filename string, connectomeName string,
 func (c Connectome) WriteCsv(writer io.Writer, namedBodyMap NamedBodyMap) {
 
 	csvWriter := csv.NewWriter(writer)
+	namedBodyList := namedBodyMap.SortByName()
 
 	// Print body names along first row
-	numBodies := len(namedBodyMap)
+	numBodies := len(namedBodyList)
 	numCells := numBodies + 1 // Leave 1 cell for header of row/col
 	record := make([]string, numCells)
 	n := 1
-	for _, namedBody := range namedBodyMap {
+	for _, namedBody := range namedBodyList {
 		record[n] = namedBody.Name
 		n++
 	}
@@ -153,14 +155,14 @@ func (c Connectome) WriteCsv(writer io.Writer, namedBodyMap NamedBodyMap) {
 	// For every subsequent row, the first column is body name,
 	// and the rest are the strengths of (pre, post) where pre body
 	// name is listed in 1st column.
-	for bodyId1, namedBody1 := range namedBodyMap {
+	for _, namedBody1 := range namedBodyList {
 		record[0] = namedBody1.Name
 		n := 1
-		for bodyId2, _ := range namedBodyMap {
+		for _, namedBody2 := range namedBodyList {
 			strength := 0
-			connections, preFound := c[bodyId1]
+			connections, preFound := c[namedBody1.Body]
 			if preFound {
-				value, postFound := connections[bodyId2]
+				value, postFound := connections[namedBody2.Body]
 				if postFound {
 					strength = value
 				}

@@ -37,6 +37,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 )
 
@@ -53,7 +54,25 @@ type NamedBody struct {
 	Locked      bool
 }
 
+// NamedBodyMap provides a mapping between body id -> named body
 type NamedBodyMap map[BodyId]NamedBody
+
+// NamedBodyList implements sort.Interface
+type NamedBodyList []NamedBody
+
+func (list NamedBodyList) Len() int           { return len(list) }
+func (list NamedBodyList) Swap(i, j int)      { list[i], list[j] = list[j], list[i] }
+func (list NamedBodyList) Less(i, j int) bool { return list[i].Name < list[j].Name }
+
+// SortByName returns a list of NamedBody sorted in ascending order by body name
+func (bodyMap NamedBodyMap) SortByName() NamedBodyList {
+	list := make(NamedBodyList, 0, len(bodyMap))
+	for _, namedBody := range bodyMap {
+		list = append(list, namedBody)
+	}
+	sort.Sort(list)
+	return list
+}
 
 // ReadNamedBodiesCsv reads in a named bodies CSV file and returns
 // a map from BodyID to NamedBody struct.  The first line is
