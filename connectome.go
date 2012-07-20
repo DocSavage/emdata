@@ -38,18 +38,89 @@ import (
 	"io"
 	"log"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 )
+
+type Connection struct {
+	Pre      string
+	Post     string
+	Strength int
+}
+
+type ConnectionList []Connection
+
+func (list ConnectionList) Len() int           { return len(list) }
+func (list ConnectionList) Swap(i, j int)      { list[i], list[j] = list[j], list[i] }
+func (list ConnectionList) Less(i, j int) bool { return list[i].Strength > list[j].Strength }
+
+// SortByStrength sorts a ConnectionList in descending order of strength
+func (list ConnectionList) SortByStrength() {
+	sort.Sort(list)
+}
 
 // Connectome holds the strength of connections between two body ids
 // in a directed fashion.  The first key is the pre-synaptic body
 // and the second is the post-synaptic body id.
 type Connectome map[BodyId](map[BodyId]int)
 
+// GetConnection returns a (pre, post) strength and 'found' bool.
+func (c Connectome) ConnectionStrength(pre, post BodyId) (strength int, found bool) {
+	connections, found := c[pre]
+	if found {
+		_, found = connections[post]
+		if found {
+			strength = c[pre][post]
+			if strength == 0 {
+				found = false
+			}
+		}
+	}
+	return
+}
+
 // NamedConnectome holds strength of connections between two bodies
 // that are identified using names (strings) instead of body ids as
 // in the Connectome type.
 type NamedConnectome map[string](map[string]int)
+
+// GetConnection returns a (pre, post) strength and 'found' bool.
+func (nc NamedConnectome) ConnectionStrength(pre, post string) (strength int, found bool) {
+	connections, found := nc[pre]
+	if found {
+		_, found = connections[post]
+		if found {
+			strength = nc[pre][post]
+			if strength == 0 {
+				found = false
+			}
+		}
+	}
+	return
+}
+
+func (nc NamedConnectome) MatchingNames(patterns []string) (matches []string) {
+	matches = make([]string, 0, len(patterns))
+	for _, pattern := range patterns {
+		if pattern[len(pattern)-1:] == "*" {
+			// Use as prefix
+			pattern = pattern[:len(pattern)-1]
+			for name, _ := range nc {
+				if strings.HasPrefix(name, pattern) {
+					matches = append(matches, name)
+				}
+			}
+		} else {
+			// Require exact matching
+			_, found := nc[pattern]
+			if found {
+				matches = append(matches, pattern)
+			}
+		}
+	}
+	return
+}
 
 // AddConnection adds a (pre, post) connection of given strength
 // to a connectome.
@@ -213,8 +284,7 @@ func ReadCsv(reader io.Reader) (nc *NamedConnectome) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			log.Println("Warning: error reading CSV file, skipping line:", err)
-			log.Println("Skipped line:\n", items)
+			log.Println("Warning:", err)
 		} else if items[0] == "" {
 			continue
 		} else if len(items) != len(bodyNames) {
