@@ -207,6 +207,85 @@ func (c Connectome) WriteMatlabFile(filename string, connectomeName string,
 	file.Close()
 }
 
+// Python code for Neuoptikon
+const neuroptikonHeader = `
+def findOrCreateLocation(location):
+	region = network.findRegion(name = location)
+	if not region:
+		region = network.createRegion(name = location)
+	return region
+
+def findOrCreateBody(bodyName, regionName=None):
+    neuron = network.findNeuron(name = bodyName)
+    if not neuron:
+        neuron = network.createNeuron(name = bodyName)
+    if regionName:
+    	region = findOrCreateLocation(regionName)
+
+
+    return neuron
+
+neurons = {}
+`
+
+const connectionCode = `
+connection = pre.SynapseOn(post)
+connection.addAttribute('Count', Attribute.INTEGER_TYPE, int(%d))
+`
+
+// WriteNeuroptikon writes connectome data in a python script that can be
+// executed by the Neuroptikon program
+func (c Connectome) WriteNeuroptikon(writer io.Writer, namedBodyMap NamedBodyMap) {
+
+	bufferedWriter := bufio.NewWriter(writer)
+	defer bufferedWriter.Flush()
+
+	_, err := fmt.Fprintln(bufferedWriter, neuroptikonHeader)
+	if err != nil {
+		log.Fatalf("ERROR: Unable to write Neuroptikon code: %s", err)
+	}
+
+	namedBodyList := namedBodyMap.SortByName()
+
+	for _, namedBody1 := range namedBodyList {
+		for _, namedBody2 := range namedBodyList {
+			connections, preFound := c[namedBody1.Body]
+			if preFound {
+				strength, postFound := connections[namedBody2.Body]
+				if postFound {
+					_, err := fmt.Fprintf(bufferedWriter,
+						"pre = findOrCreateBody('%s', '%s')\n",
+						namedBody1.Name, namedBody1.Location)
+					if err != nil {
+						log.Fatalln("ERROR: Unable to write python code:", err)
+					}
+					_, err = fmt.Fprintf(bufferedWriter,
+						"post = findOrCreateBody('%s', '%s')\n",
+						namedBody2.Name, namedBody2.Location)
+					if err != nil {
+						log.Fatalln("ERROR: Unable to write python code:", err)
+					}
+					_, err = fmt.Fprintf(bufferedWriter, connectionCode, strength)
+					if err != nil {
+						log.Fatalln("ERROR: Unable to write python code:", err)
+					}
+				}
+			}
+		}
+	}
+}
+
+// WriteNeuroptikonFile writes connectome data into a python for Neuroptikon import
+func (c Connectome) WriteNeuroptikonFile(filename string, namedBodyMap NamedBodyMap) {
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatalf("ERROR: Failed to create connectome Neuroptikon file: %s [%s]\n",
+			filename, err)
+	}
+	c.WriteNeuroptikon(file, namedBodyMap)
+	file.Close()
+}
+
 // WriteCsv writes connectome data in CSV format with body names as
 // headers for rows/columns
 func (c Connectome) WriteCsv(writer io.Writer, namedBodyMap NamedBodyMap) {
