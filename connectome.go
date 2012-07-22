@@ -221,16 +221,16 @@ def findOrCreateBody(bodyName, regionName=None):
         neuron = network.createNeuron(name = bodyName)
     if regionName:
     	region = findOrCreateLocation(regionName)
-
-
+    display.setLabel(neuron, bodyName)
     return neuron
 
 neurons = {}
 `
 
 const connectionCode = `
-connection = pre.SynapseOn(post)
+connection = pre.synapseOn(post)
 connection.addAttribute('Count', Attribute.INTEGER_TYPE, int(%d))
+
 `
 
 // WriteNeuroptikon writes connectome data in a python script that can be
