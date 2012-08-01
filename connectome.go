@@ -46,24 +46,9 @@ import (
 	"strings"
 )
 
-type AnnotationPoint struct {
-	Location   Point3d `json:"location"`
-	Body       BodyId  `json:"body ID"`
-	Confidence float32 `json:"confidence,omitempty"`
-	Uid        string  `json:"uid,omitempty"`
-}
-
-type Tbar struct {
-	AnnotationPoint
-}
-
-type Psd struct {
-	AnnotationPoint
-}
-
 type Synapse struct {
-	Pre  Tbar
-	Post Psd
+	Pre  JsonTbar
+	Post JsonPsd
 }
 
 type Connection []Synapse
@@ -154,7 +139,7 @@ func (c Connectome) ConnectionStrength(pre, post BodyId) (
 }
 
 // AddSynapse adds a synapse to a given connectome.
-func (c *Connectome) AddSynapse(s Synapse) {
+func (c *Connectome) AddSynapse(s *Synapse) {
 	if len(c.Connectivity) == 0 {
 		c.Connectivity = make(ConnectivityMap)
 	}
@@ -164,13 +149,14 @@ func (c *Connectome) AddSynapse(s Synapse) {
 	if preFound {
 		_, postFound := connections[postId]
 		if postFound {
-			c.Connectivity[preId][postId] = append(c.Connectivity[preId][postId], s)
+			c.Connectivity[preId][postId] = append(
+				c.Connectivity[preId][postId], *s)
 		} else {
-			c.Connectivity[preId][postId] = []Synapse{s}
+			c.Connectivity[preId][postId] = []Synapse{*s}
 		}
 	} else {
 		c.Connectivity[preId] = make(map[BodyId]Connection)
-		c.Connectivity[preId][postId] = []Synapse{s}
+		c.Connectivity[preId][postId] = []Synapse{*s}
 	}
 }
 

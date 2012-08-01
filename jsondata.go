@@ -190,6 +190,28 @@ type JsonSynapses struct {
 	Data     []JsonSynapse          `json:"data,omitempty"`
 }
 
+// ReadSynapsesJson returns a synapse structure corresponding to 
+// a JSON synapse annotation file.
+func ReadSynapsesJson(filename string) *JsonSynapses {
+	var file *os.File
+	var err error
+	if file, err = os.Open(filename); err != nil {
+		log.Fatalf("FATAL ERROR: Failed to open JSON file: %s [%s]",
+			filename, err)
+	}
+	defer file.Close()
+	dec := json.NewDecoder(file)
+	var synapses *JsonSynapses
+	if err := dec.Decode(&synapses); err == io.EOF {
+		log.Fatalf("FATAL ERROR: No data in JSON file: %s\n", filename)
+	} else if err != nil {
+		log.Fatalf("FATAL ERROR: Error reading JSON file (%s): %s\n",
+			filename, err)
+	}
+	return synapses
+}
+
+// ComputeStats traverses synapses and accumulates tracing stats.
 func (synapses *JsonSynapses) ComputeStats() (stats TracingStats) {
 	for _, synapse := range synapses.Data {
 		stats.TracedTbars++
@@ -240,17 +262,23 @@ func (synapse *JsonSynapse) GetPsdIndex(psdUid string) (index int, found bool) {
 // assignment useful for analysis and tracking synapses through
 // transformations.
 type JsonTbar struct {
-	Tbar
-	UsedBodyRadius int    `json:"used body radius,omitempty"`
-	Status         string `json:"status,omitempty"`
-	Assignment     string `json:"assignment,omitempty"`
+	Location       Point3d `json:"location"`
+	Body           BodyId  `json:"body ID"`
+	Confidence     float32 `json:"confidence,omitempty"`
+	Uid            string  `json:"uid,omitempty"`
+	UsedBodyRadius int     `json:"used body radius,omitempty"`
+	Status         string  `json:"status,omitempty"`
+	Assignment     string  `json:"assignment,omitempty"`
 }
 
 // JsonPsd holds information for a post-synaptic density (PSD),
 // including the tracing results for various proofreading agents.
 type JsonPsd struct {
-	Psd
-	Tracings       []JsonTracing `json:"tracings"`
+	Location       Point3d       `json:"location"`
+	Body           BodyId        `json:"body ID"`
+	Confidence     float32       `json:"confidence,omitempty"`
+	Uid            string        `json:"uid,omitempty"`
+	Tracings       []JsonTracing `json:"tracings,omitempty"`
 	TransformIssue bool          `json:"transform issue,omitempty"`
 	BodyIssue      bool          `json:"body issue,omitempty"`
 }
@@ -328,27 +356,6 @@ func StackSynapsesJsonFilename(stackPath string) string {
 // body annotation file for a given stack directory
 func StackBodiesJsonFilename(stackPath string) string {
 	return filepath.Join(stackPath, JsonBodyFilename)
-}
-
-// ReadSynapsesJson returns a synapse structure corresponding to 
-// a JSON synapse annotation file.
-func ReadSynapsesJson(filename string) *JsonSynapses {
-	var file *os.File
-	var err error
-	if file, err = os.Open(filename); err != nil {
-		log.Fatalf("FATAL ERROR: Failed to open JSON file: %s [%s]",
-			filename, err)
-	}
-	defer file.Close()
-	dec := json.NewDecoder(file)
-	var synapses *JsonSynapses
-	if err := dec.Decode(&synapses); err == io.EOF {
-		log.Fatalf("FATAL ERROR: No data in JSON file: %s\n", filename)
-	} else if err != nil {
-		log.Fatalf("FATAL ERROR: Error reading JSON file (%s): %s\n",
-			filename, err)
-	}
-	return synapses
 }
 
 // JsonStack is a stack that contains synapse, 
