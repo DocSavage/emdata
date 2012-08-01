@@ -33,115 +33,148 @@ package emdata
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-type Connection struct {
-	Pre      string
-	Post     string
-	Strength int
+type AnnotationPoint struct {
+	Location   Point3d `json:"location"`
+	Body       BodyId  `json:"body ID"`
+	Confidence float32 `json:"confidence,omitempty"`
+	Uid        string  `json:"uid,omitempty"`
 }
 
-type ConnectionList []Connection
+type Tbar struct {
+	AnnotationPoint
+}
 
-func (list ConnectionList) Len() int           { return len(list) }
-func (list ConnectionList) Swap(i, j int)      { list[i], list[j] = list[j], list[i] }
-func (list ConnectionList) Less(i, j int) bool { return list[i].Strength > list[j].Strength }
+type Psd struct {
+	AnnotationPoint
+}
+
+type Synapse struct {
+	Pre  Tbar
+	Post Psd
+}
+
+type Connection []Synapse
+
+func (c Connection) Strength() int {
+	return len(c)
+}
+
+func (c Connection) WriteNeuroptikon(writer io.Writer) {
+	for _, synapse := range c {
+		_, err := fmt.Fprintf(writer, "addConnection(pre, post, %d, %s, %s)\n",
+			1, synapse.Pre.Location.String(), synapse.Post.Location.String())
+		if err != nil {
+			log.Fatalln("ERROR: Unable to write python code:", err)
+		}
+	}
+}
+
+type NamedConnection struct {
+	Connection
+	PreName  string
+	PostName string
+}
+
+type ConnectionList []NamedConnection
+
+func (list ConnectionList) Len() int {
+	return len(list)
+}
+func (list ConnectionList) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
+}
+func (list ConnectionList) Less(i, j int) bool {
+	return list[i].Strength() > list[j].Strength()
+}
 
 // SortByStrength sorts a ConnectionList in descending order of strength
 func (list ConnectionList) SortByStrength() {
 	sort.Sort(list)
 }
 
-// Connectome holds the strength of connections between two body ids
+// ConnectivityMap holds the connection data between two body ids
 // in a directed fashion.  The first key is the pre-synaptic body
 // and the second is the post-synaptic body id.
-type Connectome map[BodyId](map[BodyId]int)
+type ConnectivityMap map[BodyId](map[BodyId]Connection)
 
-// GetConnection returns a (pre, post) strength and 'found' bool.
-func (c Connectome) ConnectionStrength(pre, post BodyId) (strength int, found bool) {
-	connections, found := c[pre]
-	if found {
-		_, found = connections[post]
-		if found {
-			strength = c[pre][post]
-			if strength == 0 {
-				found = false
-			}
-		}
-	}
-	return
+// Connectome holds both a catalog of neurons and their connectivity.
+type Connectome struct {
+	Neurons      NamedBodyMap
+	Connectivity ConnectivityMap
 }
 
-// NamedConnectome holds strength of connections between two bodies
-// that are identified using names (strings) instead of body ids as
-// in the Connectome type.
-type NamedConnectome map[string](map[string]int)
-
-// GetConnection returns a (pre, post) strength and 'found' bool.
-func (nc NamedConnectome) ConnectionStrength(pre, post string) (strength int, found bool) {
-	connections, found := nc[pre]
-	if found {
-		_, found = connections[post]
-		if found {
-			strength = nc[pre][post]
-			if strength == 0 {
-				found = false
-			}
-		}
-	}
-	return
-}
-
-func (nc NamedConnectome) MatchingNames(patterns []string) (matches []string) {
-	matches = make([]string, 0, len(patterns))
-	for _, pattern := range patterns {
-		if pattern[len(pattern)-1:] == "*" {
-			// Use as prefix
-			pattern = pattern[:len(pattern)-1]
-			for name, _ := range nc {
-				if strings.HasPrefix(name, pattern) {
-					matches = append(matches, name)
+// ConnectionsSortedByName returns a sorted list of NamedConnection
+func (c Connectome) ConnectionsSortedByName() (list ConnectionList) {
+	list = make(ConnectionList, 0, len(c.Neurons))
+	namedBodyList := c.Neurons.SortByName()
+	for _, namedBody1 := range namedBodyList {
+		for _, namedBody2 := range namedBodyList {
+			connections, preFound := c.Connectivity[namedBody1.Body]
+			if preFound {
+				connection, postFound := connections[namedBody2.Body]
+				if postFound {
+					list = append(list, NamedConnection{connection,
+						namedBody1.Name, namedBody2.Name})
 				}
 			}
-		} else {
-			// Require exact matching
-			_, found := nc[pattern]
-			if found {
-				matches = append(matches, pattern)
+		}
+	}
+	return
+}
+
+// GetConnection returns a (pre, post) strength and 'found' bool.
+func (c Connectome) ConnectionStrength(pre, post BodyId) (
+	strength int, found bool) {
+
+	strength = 0
+	connections, found := c.Connectivity[pre]
+	if found {
+		connection, found := connections[post]
+		if found {
+			strength = connection.Strength()
+			if strength == 0 {
+				found = false
 			}
 		}
 	}
 	return
 }
 
-// AddConnection adds a (pre, post) connection of given strength
-// to a connectome.
-func (c *Connectome) AddConnection(pre, post BodyId, strength int) {
-	if len(*c) == 0 {
-		*c = make(Connectome)
+// AddSynapse adds a synapse to a given connectome.
+func (c *Connectome) AddSynapse(s Synapse) {
+	if len(c.Connectivity) == 0 {
+		c.Connectivity = make(ConnectivityMap)
 	}
-	connections, preFound := (*c)[pre]
+	preId := s.Pre.Body
+	postId := s.Post.Body
+	connections, preFound := c.Connectivity[preId]
 	if preFound {
-		_, postFound := connections[post]
+		_, postFound := connections[postId]
 		if postFound {
-			(*c)[pre][post] += strength
+			c.Connectivity[preId][postId] = append(c.Connectivity[preId][postId], s)
 		} else {
-			(*c)[pre][post] = strength
+			c.Connectivity[preId][postId] = []Synapse{s}
 		}
 	} else {
-		(*c)[pre] = make(map[BodyId]int)
-		(*c)[pre][post] = strength
+		c.Connectivity[preId] = make(map[BodyId]Connection)
+		c.Connectivity[preId][postId] = []Synapse{s}
 	}
 }
 
+/*
 // Add returns a connectome that's the sum of two connectomes.
 func (c1 Connectome) Add(c2 Connectome) (sum Connectome) {
 	sum = make(Connectome)
@@ -158,12 +191,34 @@ func (c1 Connectome) Add(c2 Connectome) (sum Connectome) {
 	}
 	return
 }
+*/
+
+// WriteJson writes connectome data in JSON format
+func (c Connectome) WriteJson(writer io.Writer) {
+	m, err := json.Marshal(c)
+	if err != nil {
+		log.Fatalf("Error in writing connectome json: %s", err)
+	}
+	var buf bytes.Buffer
+	json.Indent(&buf, m, "", "    ")
+	buf.WriteTo(writer)
+}
+
+// WriteJsonFile writes connectome data into a JSON file.
+func (c Connectome) WriteJsonFile(filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatalf("ERROR: Failed to create connectome JSON file: %s [%s]\n",
+			filename, err)
+	}
+	c.WriteJson(file)
+	file.Close()
+}
 
 // WriteMatlab writes connectome data as Matlab code for a
 // containers.Map() data structure.  Key names are body names
 // within the passed NamedBodyMap.
-func (c Connectome) WriteMatlab(writer io.Writer, connectomeName string,
-	namedBodyMap NamedBodyMap) {
+func (c Connectome) WriteMatlab(writer io.Writer, connectomeName string) {
 
 	bufferedWriter := bufio.NewWriter(writer)
 	defer bufferedWriter.Flush()
@@ -173,20 +228,19 @@ func (c Connectome) WriteMatlab(writer io.Writer, connectomeName string,
 	if err != nil {
 		log.Fatalf("ERROR: Unable to write matlab code: %s", err)
 	}
-	namedBodyList := namedBodyMap.SortByName()
+	namedBodyList := c.Neurons.SortByName()
 	for _, namedBody1 := range namedBodyList {
+		preId := namedBody1.Body
 		for _, namedBody2 := range namedBodyList {
+			postId := namedBody2.Body
 			key := namedBody1.Name + "," + namedBody2.Name
-			connections, preFound := c[namedBody1.Body]
-			if preFound {
-				strength, postFound := connections[namedBody2.Body]
-				if postFound {
-					_, err := fmt.Fprintf(bufferedWriter, "%s('%s') = %d\n",
-						connectomeName, key, strength)
-					if err != nil {
-						log.Fatalln("ERROR: Unable to write matlab code:",
-							err)
-					}
+			strength, found := c.ConnectionStrength(preId, postId)
+			if found {
+				_, err := fmt.Fprintf(bufferedWriter, "%s('%s') = %d\n",
+					connectomeName, key, strength)
+				if err != nil {
+					log.Fatalln("ERROR: Unable to write matlab code:",
+						err)
 				}
 			}
 		}
@@ -195,103 +249,118 @@ func (c Connectome) WriteMatlab(writer io.Writer, connectomeName string,
 
 // WriteMatlabFile writes connectome data as Matlab code for a
 // containers.Map() data structure into the given filename.
-func (c Connectome) WriteMatlabFile(filename string, connectomeName string,
-	namedBodyMap NamedBodyMap) {
+func (c Connectome) WriteMatlabFile(filename string, connectomeName string) {
 
 	file, err := os.Create(filename)
 	if err != nil {
 		log.Fatalf("FATAL ERROR: Failed to create connectome matlab file: %s [%s]\n",
 			filename, err)
 	}
-	c.WriteMatlab(file, connectomeName, namedBodyMap)
+	c.WriteMatlab(file, connectomeName)
 	file.Close()
 }
 
 // Python code for Neuoptikon
-const neuroptikonHeader = `
+const headerCode = `
+import library.neuron_class
+
+CellTypes = {}
+
 def findOrCreateLocation(location):
 	region = network.findRegion(name = location)
 	if not region:
 		region = network.createRegion(name = location)
 	return region
 
-def findOrCreateBody(bodyName, regionName=None):
-    neuron = network.findNeuron(name = bodyName)
+def findOrCreateBody(bodyName, bodyId, cellType=None, regionName=None,
+	primary=isPrimary, secondary=isSecondary):
+
+	global CellTypes
+	cell = None
+	if cellType:
+		if cellType in CellTypes:
+			cell = CellTypes[cellType]
+		else:
+			cell = library.neuron_class.NeuronClass(None,
+				name=cellType, abbreviation=cellType)
+			CellTypes[cellType] = cell
+
+    neuron = network.findNeuron(name=bodyName)
     if not neuron:
-        neuron = network.createNeuron(name = bodyName)
-    if regionName:
-    	region = findOrCreateLocation(regionName)
+	    if regionName:
+	    	region = findOrCreateLocation(regionName)
+	    	neuron = network.createNeuron(name=bodyName, neuronClass=cell, region=region)
+	    else:
+	    	neuron = network.createNeuron(name=bodyName, neuronClass=cell)
+	neuron.addAttribute('BodyID', Attribute.INTEGER_TYPE, bodyId)
+	neuron.addAttribute('Primary', Attribute.BOOLEAN_TYPE, primary)
+	neuron.addAttribute('Secondary', Attribute.BOOLEAN_TYPE, secondary)
+
     display.setLabel(neuron, bodyName)
     return neuron
+
+def addConnection(pre, post, strength, tbarCoord, psdCoord):
+	connection = pre.synapseOn(post)
+	connection.addAttribute('Count', Attribute.INTEGER_TYPE, strength)
+	connection.addAttribute('TbarX', Attribute.INTEGER_TYPE, tbarCoord[0])
+	connection.addAttribute('TbarY', Attribute.INTEGER_TYPE, tbarCoord[1])
+	connection.addAttribute('TbarZ', Attribute.INTEGER_TYPE, tbarCoord[2])
+	connection.addAttribute('PsdX', Attribute.INTEGER_TYPE, psdCoord[0])
+	connection.addAttribute('PsdY', Attribute.INTEGER_TYPE, psdCoord[1])
+	connection.addAttribute('PsdZ', Attribute.INTEGER_TYPE, psdCoord[2])
 
 neurons = {}
 `
 
-const connectionCode = `
-connection = pre.synapseOn(post)
-connection.addAttribute('Count', Attribute.INTEGER_TYPE, int(%d))
-
+const displayCode = `
+display.performLayout()
 `
 
 // WriteNeuroptikon writes connectome data in a python script that can be
 // executed by the Neuroptikon program
-func (c Connectome) WriteNeuroptikon(writer io.Writer, namedBodyMap NamedBodyMap) {
+func (c Connectome) WriteNeuroptikon(writer io.Writer) {
 
 	bufferedWriter := bufio.NewWriter(writer)
 	defer bufferedWriter.Flush()
 
-	_, err := fmt.Fprintln(bufferedWriter, neuroptikonHeader)
+	_, err := fmt.Fprintln(bufferedWriter, headerCode)
 	if err != nil {
 		log.Fatalf("ERROR: Unable to write Neuroptikon code: %s", err)
 	}
 
-	namedBodyList := namedBodyMap.SortByName()
-
-	for _, namedBody1 := range namedBodyList {
-		for _, namedBody2 := range namedBodyList {
-			connections, preFound := c[namedBody1.Body]
-			if preFound {
-				strength, postFound := connections[namedBody2.Body]
-				if postFound {
-					_, err := fmt.Fprintf(bufferedWriter,
-						"pre = findOrCreateBody('%s', '%s')\n",
-						namedBody1.Name, namedBody1.Location)
-					if err != nil {
-						log.Fatalln("ERROR: Unable to write python code:", err)
-					}
-					_, err = fmt.Fprintf(bufferedWriter,
-						"post = findOrCreateBody('%s', '%s')\n",
-						namedBody2.Name, namedBody2.Location)
-					if err != nil {
-						log.Fatalln("ERROR: Unable to write python code:", err)
-					}
-					_, err = fmt.Fprintf(bufferedWriter, connectionCode, strength)
-					if err != nil {
-						log.Fatalln("ERROR: Unable to write python code:", err)
-					}
-				}
-			}
+	for bodyId1, connections := range c.Connectivity {
+		namedBody1 := c.Neurons[bodyId1]
+		for bodyId2, connection := range connections {
+			namedBody2 := c.Neurons[bodyId2]
+			namedBody1.WriteNeuroptikon(bufferedWriter, true)
+			namedBody2.WriteNeuroptikon(bufferedWriter, false)
+			connection.WriteNeuroptikon(bufferedWriter)
 		}
+	}
+
+	_, err = fmt.Fprintln(bufferedWriter, displayCode)
+	if err != nil {
+		log.Fatalf("ERROR: Unable to write Neuroptikon code: %s", err)
 	}
 }
 
 // WriteNeuroptikonFile writes connectome data into a python for Neuroptikon import
-func (c Connectome) WriteNeuroptikonFile(filename string, namedBodyMap NamedBodyMap) {
+func (c Connectome) WriteNeuroptikonFile(filename string) {
 	file, err := os.Create(filename)
 	if err != nil {
 		log.Fatalf("ERROR: Failed to create connectome Neuroptikon file: %s [%s]\n",
 			filename, err)
 	}
-	c.WriteNeuroptikon(file, namedBodyMap)
+	c.WriteNeuroptikon(file)
 	file.Close()
 }
 
 // WriteCsv writes connectome data in CSV format with body names as
 // headers for rows/columns
-func (c Connectome) WriteCsv(writer io.Writer, namedBodyMap NamedBodyMap) {
+func (c Connectome) WriteCsv(writer io.Writer) {
 
 	csvWriter := csv.NewWriter(writer)
-	namedBodyList := namedBodyMap.SortByName()
+	namedBodyList := c.Neurons.SortByName()
 
 	// Print body names along first row
 	numBodies := len(namedBodyList)
@@ -315,11 +384,11 @@ func (c Connectome) WriteCsv(writer io.Writer, namedBodyMap NamedBodyMap) {
 		n := 1
 		for _, namedBody2 := range namedBodyList {
 			strength := 0
-			connections, preFound := c[namedBody1.Body]
+			connections, preFound := c.Connectivity[namedBody1.Body]
 			if preFound {
-				value, postFound := connections[namedBody2.Body]
+				connection, postFound := connections[namedBody2.Body]
 				if postFound {
-					strength = value
+					strength = connection.Strength()
 				}
 			}
 			record[n] = strconv.Itoa(strength)
@@ -334,14 +403,86 @@ func (c Connectome) WriteCsv(writer io.Writer, namedBodyMap NamedBodyMap) {
 }
 
 // WriteCsvFile writes connectome data into a CSV file.
-func (c Connectome) WriteCsvFile(filename string, namedBodyMap NamedBodyMap) {
+func (c Connectome) WriteCsvFile(filename string) {
 	file, err := os.Create(filename)
 	if err != nil {
 		log.Fatalf("ERROR: Failed to create connectome csv file: %s [%s]\n",
 			filename, err)
 	}
-	c.WriteCsv(file, namedBodyMap)
+	c.WriteCsv(file)
 	file.Close()
+}
+
+// Write every type of output file for connectome.
+func (c Connectome) WriteFiles(outputDir, baseName string) {
+	c.WriteMatlabFile(filepath.Join(outputDir, baseName+".m"), baseName)
+	c.WriteJsonFile(filepath.Join(outputDir, baseName+".json"))
+	c.WriteCsvFile(filepath.Join(outputDir, baseName+".csv"))
+	c.WriteNeuroptikonFile(filepath.Join(outputDir, baseName+".py"))
+}
+
+// NamedConnectome holds strength of connections between two bodies
+// that are identified using names (strings) instead of body ids as
+// in the Connectome type.
+type NamedConnectome map[string](map[string]int)
+
+// GetConnection returns a (pre, post) strength and 'found' bool.
+func (nc NamedConnectome) ConnectionStrength(pre, post string) (strength int, found bool) {
+	connections, found := nc[pre]
+	if found {
+		_, found = connections[post]
+		if found {
+			strength = nc[pre][post]
+			if strength == 0 {
+				found = false
+			}
+		}
+	}
+	return
+}
+
+// AddConnection adds a (pre, post) connection of given strength
+// to a connectome.
+func (nc *NamedConnectome) AddConnection(pre, post string, strength int) {
+	if len(*nc) == 0 {
+		*nc = make(NamedConnectome)
+	}
+	connections, preFound := (*nc)[pre]
+	if preFound {
+		_, postFound := connections[post]
+		if postFound {
+			(*nc)[pre][post] += strength
+		} else {
+			(*nc)[pre][post] = strength
+		}
+	} else {
+		(*nc)[pre] = make(map[string]int)
+		(*nc)[pre][post] = strength
+	}
+}
+
+// MatchingNames returns a slice of body names that have prefixes matching
+// the given slice of patterns
+func (nc NamedConnectome) MatchingNames(patterns []string) (matches []string) {
+	matches = make([]string, 0, len(patterns))
+	for _, pattern := range patterns {
+		if pattern[len(pattern)-1:] == "*" {
+			// Use as prefix
+			pattern = pattern[:len(pattern)-1]
+			for name, _ := range nc {
+				if strings.HasPrefix(name, pattern) {
+					matches = append(matches, name)
+				}
+			}
+		} else {
+			// Require exact matching
+			_, found := nc[pattern]
+			if found {
+				matches = append(matches, pattern)
+			}
+		}
+	}
+	return
 }
 
 // WriteCsv writes connectome data in CSV format with body names as
@@ -395,24 +536,4 @@ func ReadCsvFile(filename string) (nc *NamedConnectome) {
 	defer file.Close()
 	nc = ReadCsv(file)
 	return
-}
-
-// AddConnection adds a (pre, post) connection of given strength
-// to a connectome.
-func (nc *NamedConnectome) AddConnection(pre, post string, strength int) {
-	if len(*nc) == 0 {
-		*nc = make(NamedConnectome)
-	}
-	connections, preFound := (*nc)[pre]
-	if preFound {
-		_, postFound := connections[post]
-		if postFound {
-			(*nc)[pre][post] += strength
-		} else {
-			(*nc)[pre][post] = strength
-		}
-	} else {
-		(*nc)[pre] = make(map[string]int)
-		(*nc)[pre][post] = strength
-	}
 }

@@ -137,11 +137,76 @@ func ReadBodiesJson(filename string) (bodies *JsonBodies) {
 	return bodies
 }
 
+// synapseIndex is an internal struct for indexing PSDs.
+type synapseIndex struct {
+	tbarUid, psdUid string
+	tbarNum, psdNum int
+}
+
+// UidMap allows access of synapses using uids.
+type UidMap struct {
+	synapses *JsonSynapses
+	tbarMap  map[string]int
+	psdMap   map[string]synapseIndex
+}
+
+// MakeUidMap returns a map that can retrieve Tbars and PSDs from a UID.
+func MakeUidMap(synapses *JsonSynapses) (uidMap *UidMap) {
+	var umap UidMap
+	umap.synapses = synapses
+	umap.tbarMap = make(map[string]int)
+	umap.psdMap = make(map[string]synapseIndex)
+	for s, synapse := range synapses.Data {
+		umap.tbarMap[synapse.Tbar.Uid] = s
+		for p, psd := range synapse.Psds {
+			umap.psdMap[psd.Uid] = synapseIndex{synapse.Tbar.Uid, psd.Uid, s, p}
+		}
+	}
+	return &umap
+}
+
+// Tbar returns the tbar for a given uid.
+func (uidMap *UidMap) Tbar(uid string) (tbar *JsonTbar, found bool) {
+	tbarNum, found := uidMap.tbarMap[uid]
+	if found {
+		tbar = &(uidMap.synapses.Data[tbarNum].Tbar)
+	}
+	return
+}
+
+// Psd returns the psd for a given uid.
+func (uidMap *UidMap) Psd(uid string) (psd *JsonPsd, tbar *JsonTbar, found bool) {
+	psdI, found := uidMap.psdMap[uid]
+	if found {
+		psd = &(uidMap.synapses.Data[psdI.tbarNum].Psds[psdI.psdNum])
+	}
+	return
+}
+
 // JsonSynapses is the high-level structure for an entire
 // synapse annotation list
 type JsonSynapses struct {
 	Metadata map[string]interface{} `json:"metadata"`
 	Data     []JsonSynapse          `json:"data,omitempty"`
+}
+
+func (synapses *JsonSynapses) ComputeStats() (stats TracingStats) {
+	for _, synapse := range synapses.Data {
+		stats.TracedTbars++
+		for _, psd := range synapse.Psds {
+			stats.TracedPsds++
+			for _, tracing := range psd.Tracings {
+				if tracing.Result == Leaves {
+					stats.TracedLeaves++
+				} else if tracing.Result == Orphan {
+					stats.TracedOrphans++
+				} else if tracing.Result >= MinAnchor {
+					stats.TracedAnchors++
+				}
+			}
+		}
+	}
+	return
 }
 
 // WriteJson writes indented JSON synapse annotation list to writer
@@ -161,29 +226,68 @@ type JsonSynapse struct {
 	Psds []JsonPsd `json:"partners"`
 }
 
+// GetTracingIndex returns the index of the PSD given a PSD uid. 
+func (synapse *JsonSynapse) GetPsdIndex(psdUid string) (index int, found bool) {
+	for i, psd := range synapse.Psds {
+		if psd.Uid == psdUid {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
 // JsonTbar holds various T-bar attributes including a uid and
 // assignment useful for analysis and tracking synapses through
 // transformations.
 type JsonTbar struct {
-	Location       Point3d `json:"location"`
-	Body           BodyId  `json:"body ID"`
-	UsedBodyRadius int     `json:"used body radius,omitempty"`
-	Status         string  `json:"status,omitempty"`
-	Confidence     float32 `json:"confidence,omitempty"`
-	Uid            string  `json:"uid,omitempty"`
-	Assignment     string  `json:"assignment,omitempty"`
+	Tbar
+	UsedBodyRadius int    `json:"used body radius,omitempty"`
+	Status         string `json:"status,omitempty"`
+	Assignment     string `json:"assignment,omitempty"`
 }
 
 // JsonPsd holds information for a post-synaptic density (PSD),
 // including the tracing results for various proofreading agents.
 type JsonPsd struct {
-	Location       Point3d       `json:"location"`
-	Body           BodyId        `json:"body ID"`
-	Confidence     float32       `json:"confidence,omitempty"`
-	Uid            string        `json:"uid,omitempty"`
+	Psd
 	Tracings       []JsonTracing `json:"tracings"`
 	TransformIssue bool          `json:"transform issue,omitempty"`
 	BodyIssue      bool          `json:"body issue,omitempty"`
+}
+
+// IsAnchored returns true if any of the tracings for the PSD lead
+// to anchors.
+func (psd *JsonPsd) IsAnchored() bool {
+	for _, tracing := range psd.Tracings {
+		if tracing.Result >= MinAnchor {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckTracings checks all tracings for a given PSD and sees which of them
+// go to a named body per the namedBodyMap parameter.  If so, it returns
+// the traced body as well as a map of # of tracings that wind up in each
+// named body.
+func (psd *JsonPsd) CheckTracings(namedBodyMap NamedBodyMap) (tracedBody BodyId,
+	numTracedToNamedBody int, numTracesPerNamedBody map[BodyId]int) {
+
+	tracedBody = 0
+	numTracesPerNamedBody = map[BodyId]int{}
+	numTracedToNamedBody = 0
+	for _, tracing := range psd.Tracings {
+		if tracing.Result >= MinAnchor {
+			bodyId := BodyId(tracing.Result)
+			_, isNamed := namedBodyMap[bodyId]
+			if isNamed {
+				numTracesPerNamedBody[bodyId]++
+				tracedBody = bodyId
+				numTracedToNamedBody++
+			}
+		}
+	}
+	return
 }
 
 // JsonTracing is the data from a single PSD tracing and also
@@ -200,16 +304,6 @@ type JsonTracing struct {
 	BaseColumnBody BodyId        `json:"base column traced body,omitempty"`
 	ColumnOverlaps int           `json:"export->base overlap,omitempty"`
 	TargetOverlaps int           `json:"orig12k->target overlap,omitempty"`
-}
-
-// GetTracingIndex returns the index of the PSD given a PSD uid. 
-func (synapse *JsonSynapse) GetPsdIndex(psdUid string) (index int, found bool) {
-	for i, psd := range synapse.Psds {
-		if psd.Uid == psdUid {
-			return i, true
-		}
-	}
-	return -1, false
 }
 
 // TbarUid returns a string T-bar uid for a given 3d point

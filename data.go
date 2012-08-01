@@ -32,7 +32,9 @@
 package emdata
 
 import (
+	"reflect"
 	"strconv"
+	"time"
 )
 
 // MaxInt returns the maximum of two ints
@@ -132,4 +134,54 @@ func (bounds Bounds3d) Include(pt Point3d) bool {
 		return false
 	}
 	return true
+}
+
+type cacheData struct {
+	data    interface{}
+	updated time.Time
+}
+
+type cacheList struct {
+	varType  string
+	maxItems int
+	dataMap  map[string]cacheData
+}
+
+// Cache creates a cache for the given type and maximum cache size.
+func Cache(cacheType interface{}, maxSize int) (cache cacheList) {
+	cache.varType = reflect.TypeOf(cacheType).String()
+	cache.maxItems = maxSize
+	cache.dataMap = make(map[string]cacheData, maxSize)
+	return
+}
+
+// Store inserts a data with given key into the cache.  If the maximum
+// size of the cache (set during initial Cache() call) is exceeded,
+// the oldest item is replaced.
+func (cache *cacheList) Store(key string, data interface{}) {
+	var cacheKey string
+	if len(cache.dataMap) >= cache.maxItems {
+		var oldestKey string
+		oldestTime := time.Now()
+		// Remove the last used data item
+		for key, value := range cache.dataMap {
+			if value.updated.Before(oldestTime) {
+				oldestKey = key
+				oldestTime = value.updated
+			}
+		}
+		cacheKey = oldestKey
+	} else {
+		cacheKey = key
+	}
+	var dataToCache cacheData
+	dataToCache.data = data
+	dataToCache.updated = time.Now()
+	cache.dataMap[cacheKey] = dataToCache
+}
+
+// Retrieve fetches the cached data with the given key
+func (cache cacheList) Retrieve(key string) (data interface{}, found bool) {
+	data, found = cache.dataMap[key]
+	return
 }

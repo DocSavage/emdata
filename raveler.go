@@ -122,6 +122,15 @@ func ReadSuperpixelBounds(filename string, superpixelSet map[Superpixel]bool) (
 // SuperpixelToBodyMap holds Superpixel -> Body Id mappings
 type SuperpixelToBodyMap map[Superpixel]BodyId
 
+// Duplicate returns a copy of the given superpixel->body map
+func (spToBodyMap SuperpixelToBodyMap) Duplicate() SuperpixelToBodyMap {
+	newMap := make(SuperpixelToBodyMap, len(spToBodyMap))
+	for superpixel, bodyId := range spToBodyMap {
+		newMap[superpixel] = bodyId
+	}
+	return newMap
+}
+
 // BodyToSuperpixelMap holds Body Id -> Superpixel mappings
 type BodyToSuperpixelsMap map[BodyId]Superpixels
 
@@ -256,6 +265,95 @@ func ReadTxtMaps(stackPath string) (spToBodyMap SuperpixelToBodyMap) {
 	}
 	log.Println("Maps loaded and computed.")
 	return
+}
+
+// segmentId is a Raveler-specific unique body id per plane
+type segmentId uint32
+
+type bodySegment struct {
+	bodyId BodyId
+	plane  uint32
+}
+
+// makeSegmentMap returns a map of (bodyId, plane) -> unique segment ids.
+// Multiple bodySegment structs will map to the segment 0.
+func (spToBodyMap SuperpixelToBodyMap) makeSegmentMaps() map[bodySegment]segmentId {
+	segmentMap := make(map[bodySegment]segmentId)
+	curSegment := segmentId(1)
+	for superpixel, bodyId := range spToBodyMap {
+		if superpixel.Label == 0 {
+			segmentMap[bodySegment{0, superpixel.Slice}] = 0
+		} else {
+			segment := bodySegment{bodyId, superpixel.Slice}
+			_, found := segmentMap[segment]
+			if !found {
+				segmentMap[segment] = curSegment
+				curSegment++
+			}
+		}
+	}
+	return segmentMap
+}
+
+// WriteTxtMaps writes superpixel->segment and segment->body map
+// .txt files from a superpixel->body map.
+func (spToBodyMap SuperpixelToBodyMap) WriteTxtMaps(outputDir string) {
+	waitchan := make(chan bool)
+
+	// Get mapping of (bodyId, plane) -> unique segment ID
+	segmentMap := spToBodyMap.makeSegmentMaps()
+
+	// Write superpixel to segment map
+	go func() {
+		filename := filepath.Join(outputDir, SuperpixelToSegmentFilename)
+		log.Println("Writing superpixel->segment map for stack:\n", filename)
+		file, err := os.Create(filename)
+		if err != nil {
+			log.Fatalf("FATAL ERROR: Could not create %s: %s", filename, err)
+		}
+		defer file.Close()
+		lineWriter := bufio.NewWriter(file)
+		for superpixel, bodyId := range spToBodyMap {
+			segment, found := segmentMap[bodySegment{bodyId, superpixel.Slice}]
+			if found {
+				_, err := fmt.Fprintf(lineWriter, "%8d %8d %8d", superpixel.Slice,
+					superpixel.Label, segment)
+				if err != nil {
+					log.Fatalln("Error: unable to write superpixel->segment map:", err)
+				}
+			} else {
+				log.Fatalf("Error: No segment for body %d in slice %d!",
+					bodyId, superpixel.Slice)
+			}
+		}
+		waitchan <- true
+	}()
+
+	// Write segment to body map
+	go func() {
+		filename := filepath.Join(outputDir, SegmentToBodyFilename)
+		log.Println("Writing segment->body map for stack:\n", filename)
+		file, err := os.Create(filename)
+		if err != nil {
+			log.Fatalf("FATAL ERROR: Could not create %s: %s", filename, err)
+		}
+		defer file.Close()
+		lineWriter := bufio.NewWriter(file)
+		for bodyPlane, segmentNum := range segmentMap {
+			_, err := fmt.Fprintf(lineWriter, "%8d %8d", segmentNum,
+				bodyPlane.bodyId)
+			if err != nil {
+				log.Fatalln("Error: unable to write segment->body map:", err)
+			}
+		}
+		waitchan <- true
+	}()
+
+	// Wait until both maps have been written
+	_ = <-waitchan
+	_ = <-waitchan
+
+	log.Println("Maps written.")
 }
 
 // MappedStack is a type that can load mapping files and return maps.

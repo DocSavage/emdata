@@ -44,6 +44,13 @@ import (
 
 const TileSize = 1024
 
+type superpixelTile struct {
+	superpixels SuperpixelImage
+	format      string
+}
+
+var superpixelCache = Cache(superpixelTile{}, 5)
+
 // ReadSuperpixelTile reads a superpixel tile, either from current
 // stack directory or a base stack if necessary.
 func ReadSuperpixelTile(stack TiledJsonStack, relTilePath string) (
@@ -51,38 +58,49 @@ func ReadSuperpixelTile(stack TiledJsonStack, relTilePath string) (
 
 	// Search for file
 	filename = filepath.Join(stack.String(), relTilePath)
-	_, err := os.Stat(filename)
-	if err != nil {
-		switch stack.(type) {
-		case *BaseStack:
-			log.Fatalln("FATAL ERROR: Could not find superpixel tile (",
-				relTilePath, ") in base stack (", stack.String(), ")!")
-		case *ExportedStack:
-			var exported *ExportedStack = stack.(*ExportedStack)
-			filename = filepath.Join(exported.Base.String(), relTilePath)
-			_, err = os.Stat(filename)
-			if err != nil {
+	cachedObj, found := superpixelCache.Retrieve(filename)
+	if found {
+		tile := cachedObj.(superpixelTile)
+		superpixels = tile.superpixels
+		format = tile.format
+	} else {
+		_, err := os.Stat(filename)
+		if err != nil {
+			switch stack.(type) {
+			case *BaseStack:
 				log.Fatalln("FATAL ERROR: Could not find superpixel tile (",
-					relTilePath, ") in stack (", exported.String(),
-					") or its base (", exported.Base.String(), ")!")
+					relTilePath, ") in base stack (", stack.String(), ")!")
+			case *ExportedStack:
+				var exported *ExportedStack = stack.(*ExportedStack)
+				filename = filepath.Join(exported.Base.String(), relTilePath)
+				_, err = os.Stat(filename)
+				if err != nil {
+					log.Fatalln("FATAL ERROR: Could not find superpixel tile (",
+						relTilePath, ") in stack (", exported.String(),
+						") or its base (", exported.Base.String(), ")!")
+				}
+			default:
+				log.Fatalln("FATAL ERROR: Bad stack type passed into",
+					" ReadSuperpixel Tile:", reflect.TypeOf(stack))
 			}
-		default:
-			log.Fatalln("FATAL ERROR: Bad stack type passed into",
-				" ReadSuperpixel Tile:", reflect.TypeOf(stack))
 		}
-	}
 
-	// Given correct filename, load the image depending on format
-	file, err := os.Open(filename)
-	if err != nil {
-		log.Fatal("FATAL ERROR: opening ", filename, ": ", err)
-	}
+		// Given correct filename, load the image depending on format
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatal("FATAL ERROR: opening ", filename, ": ", err)
+		}
 
-	superpixels, format, err = image.Decode(file)
-	if err != nil {
-		log.Fatal("FATAL ERROR: decoding ", filename, ": ", err)
+		superpixels, format, err = image.Decode(file)
+		if err != nil {
+			log.Fatal("FATAL ERROR: decoding ", filename, ": ", err)
+		}
+		file.Close()
+		var tile superpixelTile
+		tile.superpixels = superpixels
+		tile.format = format
+		superpixelCache.Store(filename, tile)
 	}
-	file.Close()
 	return
 }
 
@@ -128,8 +146,9 @@ func GetSuperpixelTilePt(stack TiledJsonStack, pt Point3d) (
 }
 
 // GetBodyOfLocation reads the superpixel tile that contains the given point
-// in stack space and return its body id.
-func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
+// in stack space and return its body id and superpixel of the point.
+func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) (bodyId BodyId,
+	superpixel Superpixel) {
 
 	bounds, format := stack.TilesMetadata()
 	if !bounds.Include(pt) {
@@ -141,22 +160,23 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) BodyId {
 	superpixels, tileX, tileY := GetSuperpixelTilePt(stack, pt)
 
 	// Get the body id
-	var superpixel Superpixel
 	superpixel.Slice = uint32(pt.Z())
 	superpixel.Label = GetSuperpixelId(superpixels, tileX, tileY, format)
 
 	if superpixel.Label == 0 {
 		log.Println("** Warning: PSD falls in ZERO SUPERPIXEL: ", pt)
-		return BodyId(0)
+		bodyId = BodyId(0)
+	} else {
+		bodyId = stack.SuperpixelToBody(superpixel)
 	}
-	bodyId := stack.SuperpixelToBody(superpixel)
-	return bodyId
+	return
 }
 
-// GetBodyOfLocation reads the superpixel tile that contains the given point
-// in stack space and return its body id.
+// GetNearestBodyOfLocation reads the superpixel tile that contains the given
+// point in stack space and return the nearest non-zero body id.
 func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
-	excludeBodies BodySet, avoidBodies BodySet) (bodyId BodyId, radius int) {
+	excludeBodies BodySet, avoidBodies BodySet) (bodyId BodyId,
+	superpixel Superpixel, radius int) {
 
 	bounds, format := stack.TilesMetadata()
 	if !bounds.Include(pt) {
@@ -168,7 +188,6 @@ func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
 	superpixels, tileX, tileY := GetSuperpixelTilePt(stack, pt)
 
 	// Check for body using increasing radii
-	var superpixel Superpixel
 	superpixel.Slice = uint32(pt.Z())
 
 	checkRadius := 6

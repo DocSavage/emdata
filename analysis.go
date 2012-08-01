@@ -41,9 +41,44 @@ import (
 	"strconv"
 )
 
+type SynapseStats struct {
+	NumTbars int
+	NumPsds  int
+}
+
+type TracingStats struct {
+	TracedTbars   int
+	TracedPsds    int
+	TracedAnchors int
+	TracedOrphans int
+	TracedLeaves  int
+}
+
+func (stats TracingStats) ResultsPercentage() (
+	percentAnchored, percentOrphans, percentLeaves float32) {
+
+	totalTracings := float32(stats.TracedAnchors + stats.TracedOrphans +
+		stats.TracedLeaves)
+	percentAnchored = 100.0 * float32(stats.TracedAnchors) / totalTracings
+	percentOrphans = 100.0 * float32(stats.TracedOrphans) / totalTracings
+	percentLeaves = 100.0 * float32(stats.TracedLeaves) / totalTracings
+	return
+}
+
+func (stats TracingStats) Print() {
+	log.Println("Traced T-bars:", stats.TracedTbars)
+	log.Println("Traced PSDs:", stats.TracedPsds)
+	percentAnchored, percentOrphans, percentLeaves := stats.ResultsPercentage()
+	log.Printf("Traced PSDs -> anchors: %4.1f%%  %d", percentAnchored,
+		stats.TracedAnchors)
+	log.Printf("Traced PSDs -> orphans: %4.1f%%  %d", percentOrphans,
+		stats.TracedOrphans)
+	log.Printf("Traced PSDs ->  leaves: %4.1f%%  %d", percentLeaves,
+		stats.TracedLeaves)
+}
+
 // NamedBody encapsulates data for a segmented body that has enough
 // shape to distinguish its morphology as a likely cell type.
-// body ID,name,cell type,location,primary for connectome,secondary for connectome,comment
 type NamedBody struct {
 	Body        BodyId
 	Name        string
@@ -52,6 +87,35 @@ type NamedBody struct {
 	IsPrimary   bool
 	IsSecondary bool
 	Locked      bool
+	SynapseStats
+	TracingStats
+}
+
+// WriteNeuroptikon emits a python call to define a neuron within Neuroptikon
+func (namedBody NamedBody) WriteNeuroptikon(writer io.Writer, isPre bool) {
+
+	code := fmt.Sprintf("findOrCreateBody('%s', %d, primary=%s, secondary=%s",
+		namedBody.Name, namedBody.Body, strconv.FormatBool(namedBody.IsPrimary),
+		strconv.FormatBool(namedBody.IsSecondary))
+	if len(namedBody.CellType) > 0 {
+		code += fmt.Sprintf(", cellType='%s'", namedBody.CellType)
+	}
+	if len(namedBody.Location) > 0 {
+		code += fmt.Sprintf(", regionName='%s'", namedBody.Location)
+		code += ", regionName='%s'"
+	}
+	code += ")"
+	if isPre {
+		_, err := fmt.Fprintln(writer, "pre = "+code)
+		if err != nil {
+			log.Fatalln("ERROR: Unable to write python code:", err)
+		}
+	} else {
+		_, err := fmt.Fprintln(writer, "post = "+code)
+		if err != nil {
+			log.Fatalln("ERROR: Unable to write python code:", err)
+		}
+	}
 }
 
 // NamedBodyMap provides a mapping between body id -> named body
@@ -60,9 +124,15 @@ type NamedBodyMap map[BodyId]NamedBody
 // NamedBodyList implements sort.Interface
 type NamedBodyList []NamedBody
 
-func (list NamedBodyList) Len() int           { return len(list) }
-func (list NamedBodyList) Swap(i, j int)      { list[i], list[j] = list[j], list[i] }
-func (list NamedBodyList) Less(i, j int) bool { return list[i].Name < list[j].Name }
+func (list NamedBodyList) Len() int {
+	return len(list)
+}
+func (list NamedBodyList) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
+}
+func (list NamedBodyList) Less(i, j int) bool {
+	return list[i].Name < list[j].Name
+}
 
 // SortByName returns a list of NamedBody sorted in ascending order by body name
 func (bodyMap NamedBodyMap) SortByName() NamedBodyList {
@@ -95,12 +165,14 @@ func ReadNamedBodiesCsv(filename string) (namedBodyMap NamedBodyMap) {
 			continue
 		} else if items[0] == "body ID" {
 			// Discard header
-			log.Println("Detected Named Bodies CSV with header.  Ignoring first line.")
+			log.Println("Detected Named Bodies CSV with header.",
+				"Ignoring first line.")
 		} else {
 			var namedBody NamedBody
 			id, err := strconv.Atoi(items[0])
 			if err != nil {
-				log.Println("Warning: Can't parse, skipping named body line:", items)
+				log.Println("Warning: Can't parse,",
+					"skipping named body line:", items)
 				continue
 			}
 			namedBody.Body = BodyId(id)
@@ -206,7 +278,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 			StackDescription[stackId], setnum)
 		excludeBodies := make(BodySet)
 		curPsdBodies := make(BodySet)
-		tbarBody, radius := GetNearestBodyOfLocation(exportedStack,
+		tbarBody, _, radius := GetNearestBodyOfLocation(exportedStack,
 			synapses[s].Tbar.Location, excludeBodies, curPsdBodies)
 		if radius > 0 {
 			log.Println("Warning: T-bar", synapses[s].Tbar.Location,
@@ -219,8 +291,9 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 		ambiguous := []int{}
 		for p, psd := range synapses[s].Psds {
 			totalPsds++
-			bodyId := GetBodyOfLocation(exportedStack, psd.Location)
-			if bodyId != GetBodyOfLocation(baseStack, psd.Location) {
+			bodyId, _ := GetBodyOfLocation(exportedStack, psd.Location)
+			baseBodyId, _ := GetBodyOfLocation(baseStack, psd.Location)
+			if bodyId != baseBodyId {
 				psdsChanged++
 			}
 			if bodyId == 0 {
@@ -242,7 +315,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 		if len(ambiguous) > 0 {
 			for _, p := range ambiguous {
 				pPsd := &(synapses[s].Psds[p])
-				bodyId, radius := GetNearestBodyOfLocation(exportedStack,
+				bodyId, _, radius := GetNearestBodyOfLocation(exportedStack,
 					pPsd.Location, excludeBodies, curPsdBodies)
 				if bodyId == 0 {
 					pPsd.BodyIssue = true
