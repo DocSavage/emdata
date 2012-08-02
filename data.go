@@ -32,6 +32,7 @@
 package emdata
 
 import (
+	"log"
 	"reflect"
 	"strconv"
 	"time"
@@ -137,8 +138,8 @@ func (bounds Bounds3d) Include(pt Point3d) bool {
 }
 
 type cacheData struct {
-	data    interface{}
-	updated time.Time
+	data     interface{}
+	accessed time.Time
 }
 
 type cacheList struct {
@@ -165,9 +166,9 @@ func (cache *cacheList) Store(key string, data interface{}) {
 		oldestTime := time.Now()
 		// Remove the last used data item
 		for key, value := range cache.dataMap {
-			if value.updated.Before(oldestTime) {
+			if value.accessed.Before(oldestTime) {
 				oldestKey = key
-				oldestTime = value.updated
+				oldestTime = value.accessed
 			}
 		}
 		cacheKey = oldestKey
@@ -176,12 +177,20 @@ func (cache *cacheList) Store(key string, data interface{}) {
 	}
 	var dataToCache cacheData
 	dataToCache.data = data
-	dataToCache.updated = time.Now()
+	dataToCache.accessed = time.Now()
 	cache.dataMap[cacheKey] = dataToCache
 }
 
 // Retrieve fetches the cached data with the given key
-func (cache cacheList) Retrieve(key string) (data interface{}, found bool) {
-	data, found = cache.dataMap[key]
+func (cache *cacheList) Retrieve(key string) (data interface{}, found bool) {
+	cachedObj, found := cache.dataMap[key]
+	if found {
+		data = cachedObj.data
+		cachedObj.accessed = time.Now()
+		cache.dataMap[key] = cachedObj
+		log.Println("Cache HIT: ", key)
+	} else {
+		log.Println("Cache MISS:", key)
+	}
 	return
 }

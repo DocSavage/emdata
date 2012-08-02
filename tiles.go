@@ -58,9 +58,9 @@ func ReadSuperpixelTile(stack TiledJsonStack, relTilePath string) (
 
 	// Search for file
 	filename = filepath.Join(stack.String(), relTilePath)
-	cachedObj, found := superpixelCache.Retrieve(filename)
+	data, found := superpixelCache.Retrieve(filename)
 	if found {
-		tile := cachedObj.(superpixelTile)
+		tile := data.(superpixelTile)
 		superpixels = tile.superpixels
 		format = tile.format
 	} else {
