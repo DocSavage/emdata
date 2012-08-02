@@ -137,17 +137,20 @@ func ReadBodiesJson(filename string) (bodies *JsonBodies) {
 	return bodies
 }
 
-// synapseIndex is an internal struct for indexing PSDs.
-type synapseIndex struct {
+// SynapseIndex provides an index to specific elements within JsonSynapses
+type SynapseIndex struct {
 	tbarUid, psdUid string
 	tbarNum, psdNum int
 }
+
+// SynapseMapping maps synapses in one JsonSynapses to other JsonSynapses
+type SynapseMapping map[SynapseIndex]SynapseIndex
 
 // UidMap allows access of synapses using uids.
 type UidMap struct {
 	synapses *JsonSynapses
 	tbarMap  map[string]int
-	psdMap   map[string]synapseIndex
+	psdMap   map[string]SynapseIndex
 }
 
 // MakeUidMap returns a map that can retrieve Tbars and PSDs from a UID.
@@ -155,11 +158,11 @@ func MakeUidMap(synapses *JsonSynapses) (uidMap *UidMap) {
 	var umap UidMap
 	umap.synapses = synapses
 	umap.tbarMap = make(map[string]int)
-	umap.psdMap = make(map[string]synapseIndex)
+	umap.psdMap = make(map[string]SynapseIndex)
 	for s, synapse := range synapses.Data {
 		umap.tbarMap[synapse.Tbar.Uid] = s
 		for p, psd := range synapse.Psds {
-			umap.psdMap[psd.Uid] = synapseIndex{synapse.Tbar.Uid, psd.Uid, s, p}
+			umap.psdMap[psd.Uid] = SynapseIndex{synapse.Tbar.Uid, psd.Uid, s, p}
 		}
 	}
 	return &umap
@@ -179,6 +182,7 @@ func (uidMap *UidMap) Psd(uid string) (psd *JsonPsd, tbar *JsonTbar, found bool)
 	psdI, found := uidMap.psdMap[uid]
 	if found {
 		psd = &(uidMap.synapses.Data[psdI.tbarNum].Psds[psdI.psdNum])
+		tbar = &(uidMap.synapses.Data[psdI.tbarNum].Tbar)
 	}
 	return
 }
