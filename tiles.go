@@ -49,7 +49,7 @@ type superpixelTile struct {
 	format      string
 }
 
-var superpixelCache = Cache(superpixelTile{}, 5)
+var superpixelCache = Cache(superpixelTile{}, 10)
 
 // ReadSuperpixelTile reads a superpixel tile, either from current
 // stack directory or a base stack if necessary.

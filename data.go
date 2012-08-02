@@ -32,7 +32,6 @@
 package emdata
 
 import (
-	"log"
 	"reflect"
 	"strconv"
 	"time"
@@ -160,25 +159,24 @@ func Cache(cacheType interface{}, maxSize int) (cache cacheList) {
 // size of the cache (set during initial Cache() call) is exceeded,
 // the oldest item is replaced.
 func (cache *cacheList) Store(key string, data interface{}) {
-	var cacheKey string
 	if len(cache.dataMap) >= cache.maxItems {
 		var oldestKey string
-		oldestTime := time.Now()
+		var oldestTime time.Time
 		// Remove the last used data item
-		for key, value := range cache.dataMap {
-			if value.accessed.Before(oldestTime) {
-				oldestKey = key
-				oldestTime = value.accessed
+		itemNum := 0
+		for cacheKey, cacheValue := range cache.dataMap {
+			if itemNum == 0 || cacheValue.accessed.Before(oldestTime) {
+				oldestKey = cacheKey
+				oldestTime = cacheValue.accessed
 			}
+			itemNum++
 		}
-		cacheKey = oldestKey
-	} else {
-		cacheKey = key
+		delete(cache.dataMap, oldestKey)
 	}
 	var dataToCache cacheData
 	dataToCache.data = data
 	dataToCache.accessed = time.Now()
-	cache.dataMap[cacheKey] = dataToCache
+	cache.dataMap[key] = dataToCache
 }
 
 // Retrieve fetches the cached data with the given key
@@ -188,9 +186,6 @@ func (cache *cacheList) Retrieve(key string) (data interface{}, found bool) {
 		data = cachedObj.data
 		cachedObj.accessed = time.Now()
 		cache.dataMap[key] = cachedObj
-		log.Println("Cache HIT: ", key)
-	} else {
-		log.Println("Cache MISS:", key)
 	}
 	return
 }
