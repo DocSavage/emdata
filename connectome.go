@@ -318,13 +318,13 @@ import library.neuron_class
 CellTypes = {}
 
 def findOrCreateLocation(location):
-	region = network.findRegion(name = location)
+	region = network.findRegion(name=location)
 	if not region:
-		region = network.createRegion(name = location)
+		region = network.createRegion(name=location)
 	return region
 
 def findOrCreateBody(bodyName, bodyId, cellType=None, regionName=None,
-	primary=isPrimary, secondary=isSecondary):
+	primary=False, secondary=False):
 
 	global CellTypes
 	cell = None
@@ -383,6 +383,10 @@ func (c Connectome) WriteNeuroptikon(writer io.Writer) {
 		namedBody1 := c.Neurons[bodyId1]
 		for bodyId2, connection := range connections {
 			namedBody2 := c.Neurons[bodyId2]
+
+			fmt.Fprintln(bufferedWriter, "# Body", bodyId1,
+				namedBody1.Body, namedBody1.Name, "->",
+				bodyId2, namedBody2.Body, namedBody2.Name)
 			namedBody1.WriteNeuroptikon(bufferedWriter, true)
 			namedBody2.WriteNeuroptikon(bufferedWriter, false)
 			connection.WriteNeuroptikon(bufferedWriter)
