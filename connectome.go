@@ -101,6 +101,50 @@ type Connectome struct {
 	Connectivity ConnectivityMap
 }
 
+type jsonConnectome struct {
+	neurons      NamedBodyList
+	connectivity jsonConnectivityMap
+}
+type jsonConnectivityMap map[string](map[string]Connection)
+
+// WriteJson writes connectome data in JSON format
+func (c Connectome) WriteJson(writer io.Writer) {
+	// Create a JSON-able structure that has only string keys
+	var jsonC jsonConnectome
+	jsonC.neurons = c.Neurons.SortByName()
+	jsonC.connectivity = make(jsonConnectivityMap)
+
+	for preId, connections := range c.Connectivity {
+		pre := fmt.Sprintf("Body %d", preId)
+		jsonC.connectivity[pre] = make(map[string]Connection,
+			len(connections))
+		for postId, connection := range connections {
+			post := fmt.Sprintf("Body %d", postId)
+			jsonC.connectivity[pre][post] = connection
+		}
+	}
+
+	// Write the temporary structure
+	m, err := json.Marshal(jsonC)
+	if err != nil {
+		log.Fatalf("Error in writing connectome json: %s", err)
+	}
+	var buf bytes.Buffer
+	json.Indent(&buf, m, "", "    ")
+	buf.WriteTo(writer)
+}
+
+// WriteJsonFile writes connectome data into a JSON file.
+func (c Connectome) WriteJsonFile(filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatalf("ERROR: Failed to create connectome JSON file: %s [%s]\n",
+			filename, err)
+	}
+	c.WriteJson(file)
+	file.Close()
+}
+
 // ConnectionsSortedByName returns a sorted list of NamedConnection
 func (c Connectome) ConnectionsSortedByName() (list ConnectionList) {
 	list = make(ConnectionList, 0, len(c.Neurons))
@@ -178,28 +222,6 @@ func (c1 Connectome) Add(c2 Connectome) (sum Connectome) {
 	return
 }
 */
-
-// WriteJson writes connectome data in JSON format
-func (c Connectome) WriteJson(writer io.Writer) {
-	m, err := json.Marshal(c)
-	if err != nil {
-		log.Fatalf("Error in writing connectome json: %s", err)
-	}
-	var buf bytes.Buffer
-	json.Indent(&buf, m, "", "    ")
-	buf.WriteTo(writer)
-}
-
-// WriteJsonFile writes connectome data into a JSON file.
-func (c Connectome) WriteJsonFile(filename string) {
-	file, err := os.Create(filename)
-	if err != nil {
-		log.Fatalf("ERROR: Failed to create connectome JSON file: %s [%s]\n",
-			filename, err)
-	}
-	c.WriteJson(file)
-	file.Close()
-}
 
 // WriteMatlab writes connectome data as Matlab code for a
 // containers.Map() data structure.  Key names are body names
@@ -402,9 +424,9 @@ func (c Connectome) WriteCsvFile(filename string) {
 // Write every type of output file for connectome.
 func (c Connectome) WriteFiles(outputDir, baseName string) {
 	c.WriteMatlabFile(filepath.Join(outputDir, baseName+".m"), baseName)
-	c.WriteJsonFile(filepath.Join(outputDir, baseName+".json"))
 	c.WriteCsvFile(filepath.Join(outputDir, baseName+".csv"))
 	c.WriteNeuroptikonFile(filepath.Join(outputDir, baseName+".py"))
+	c.WriteJsonFile(filepath.Join(outputDir, baseName+".json"))
 }
 
 // NamedConnectome holds strength of connections between two bodies
