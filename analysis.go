@@ -100,9 +100,8 @@ func (namedBody NamedBody) WriteNeuroptikon(writer io.Writer, isPre bool) {
 	if len(namedBody.CellType) > 0 {
 		code += fmt.Sprintf(", cellType='%s'", namedBody.CellType)
 	}
-	if len(namedBody.Location) > 0 {
+	if len(namedBody.Location) > 0 && namedBody.Location != "-" {
 		code += fmt.Sprintf(", regionName='%s'", namedBody.Location)
-		code += ", regionName='%s'"
 	}
 	code += ")"
 	if isPre {

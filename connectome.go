@@ -35,6 +35,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/csv"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -99,6 +100,48 @@ type ConnectivityMap map[BodyId](map[BodyId]Connection)
 type Connectome struct {
 	Neurons      NamedBodyMap
 	Connectivity ConnectivityMap
+}
+
+// WriteGob writes connectome data in Go Gob format
+func (c Connectome) WriteGob(writer io.Writer) {
+	enc := gob.NewEncoder(writer)
+	err := enc.Encode(c)
+	if err != nil {
+		log.Fatalf("Error in writing connectome gob: %s", err)
+	}
+}
+
+// WriteGobFile writes connectome data into a Gob file.
+func (c Connectome) WriteGobFile(filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatalf("ERROR: Failed to create connectome Go Gob file: %s [%s]\n",
+			filename, err)
+	}
+	c.WriteGob(file)
+	file.Close()
+}
+
+// ReadGob reads a connectome from Gob format
+func ReadGob(reader io.Reader) (c *Connectome) {
+	dec := gob.NewDecoder(reader)
+	err := dec.Decode(c)
+	if err != nil {
+		log.Fatalf("Error in reading connectom gob: %s", err)
+	}
+	return
+}
+
+// ReadGobFile writes connectome data into a CSV file.
+func ReadGobFile(filename string) (c *Connectome) {
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("ERROR: Failed to open connectome Gob file: %s [%s]\n",
+			filename, err)
+	}
+	defer file.Close()
+	c = ReadGob(file)
+	return
 }
 
 type jsonConnectome struct {
@@ -426,6 +469,7 @@ func (c Connectome) WriteFiles(outputDir, baseName string) {
 	c.WriteMatlabFile(filepath.Join(outputDir, baseName+".m"), baseName)
 	c.WriteCsvFile(filepath.Join(outputDir, baseName+".csv"))
 	c.WriteNeuroptikonFile(filepath.Join(outputDir, baseName+".py"))
+	c.WriteGobFile(filepath.Join(outputDir, baseName+".gob"))
 	c.WriteJsonFile(filepath.Join(outputDir, baseName+".json"))
 }
 

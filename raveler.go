@@ -316,8 +316,8 @@ func (spToBodyMap SuperpixelToBodyMap) WriteTxtMaps(outputDir string) {
 		for superpixel, bodyId := range spToBodyMap {
 			segment, found := segmentMap[bodySegment{bodyId, superpixel.Slice}]
 			if found {
-				_, err := fmt.Fprintf(lineWriter, "%8d %8d %8d", superpixel.Slice,
-					superpixel.Label, segment)
+				_, err := fmt.Fprintf(lineWriter, "%8d %8d %8d\n",
+					superpixel.Slice, superpixel.Label, segment)
 				if err != nil {
 					log.Fatalln("Error: unable to write superpixel->segment map:", err)
 				}
@@ -340,8 +340,8 @@ func (spToBodyMap SuperpixelToBodyMap) WriteTxtMaps(outputDir string) {
 		defer file.Close()
 		lineWriter := bufio.NewWriter(file)
 		for bodyPlane, segmentNum := range segmentMap {
-			_, err := fmt.Fprintf(lineWriter, "%8d %8d", segmentNum,
-				bodyPlane.bodyId)
+			_, err := fmt.Fprintf(lineWriter, "%8d %8d\n",
+				segmentNum, bodyPlane.bodyId)
 			if err != nil {
 				log.Fatalln("Error: unable to write segment->body map:", err)
 			}
