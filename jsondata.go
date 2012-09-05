@@ -246,13 +246,24 @@ func (synapses *JsonSynapses) WriteJson(writer io.Writer) {
 	buf.WriteTo(writer)
 }
 
+// WriteJsonFile writes synapses annotation file
+func (synapses *JsonSynapses) WriteJsonFile(filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatalf("ERROR: Failed to create json synapses file: %s [%s]\n",
+			filename, err)
+	}
+	synapses.WriteJson(file)
+	file.Close()
+}
+
 // JsonSynapse holds a T-bar and associated PSDs (partners)
 type JsonSynapse struct {
 	Tbar JsonTbar  `json:"T-bar"`
 	Psds []JsonPsd `json:"partners"`
 }
 
-// GetTracingIndex returns the index of the PSD given a PSD uid. 
+// GetPsdIndex returns the index of the PSD given a PSD uid. 
 func (synapse *JsonSynapse) GetPsdIndex(psdUid string) (index int, found bool) {
 	for i, psd := range synapse.Psds {
 		if psd.Uid == psdUid {
@@ -275,6 +286,11 @@ type JsonTbar struct {
 	Assignment     string  `json:"assignment,omitempty"`
 }
 
+// GetLocationAndUid returns location and uid data
+func (tbar *JsonTbar) GetLocationAndUid() (location Point3d, uid string) {
+	return tbar.Location, tbar.Uid
+}
+
 // JsonPsd holds information for a post-synaptic density (PSD),
 // including the tracing results for various proofreading agents.
 type JsonPsd struct {
@@ -285,6 +301,11 @@ type JsonPsd struct {
 	Tracings       []JsonTracing `json:"tracings,omitempty"`
 	TransformIssue bool          `json:"transform issue,omitempty"`
 	BodyIssue      bool          `json:"body issue,omitempty"`
+}
+
+// GetLocationAndUid returns location and uid data
+func (psd *JsonPsd) GetLocationAndUid() (location Point3d, uid string) {
+	return psd.Location, psd.Uid
 }
 
 // IsAnchored returns true if any of the tracings for the PSD lead

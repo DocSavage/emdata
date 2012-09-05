@@ -451,6 +451,7 @@ func (c Connectome) WriteCsv(writer io.Writer) {
 				"presynaptic body", namedBody1.Name, ":", err)
 		}
 	}
+	csvWriter.Flush()
 }
 
 // WriteCsvFile writes connectome data into a CSV file.

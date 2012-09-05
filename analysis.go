@@ -277,7 +277,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 			StackDescription[stackId], setnum)
 		excludeBodies := make(BodySet)
 		curPsdBodies := make(BodySet)
-		tbarBody, _, radius := GetNearestBodyOfLocation(exportedStack,
+		tbarBody, _, radius, _ := GetNearestBodyOfLocation(exportedStack,
 			synapses[s].Tbar.Location, excludeBodies, curPsdBodies)
 		if radius > 0 {
 			log.Println("Warning: T-bar", synapses[s].Tbar.Location,
@@ -314,7 +314,7 @@ func CreatePsdTracing(stackId StackId, userid string, setnum int,
 		if len(ambiguous) > 0 {
 			for _, p := range ambiguous {
 				pPsd := &(synapses[s].Psds[p])
-				bodyId, _, radius := GetNearestBodyOfLocation(exportedStack,
+				bodyId, _, radius, _ := GetNearestBodyOfLocation(exportedStack,
 					pPsd.Location, excludeBodies, curPsdBodies)
 				if bodyId == 0 {
 					pPsd.BodyIssue = true

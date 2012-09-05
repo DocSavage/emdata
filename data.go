@@ -37,16 +37,16 @@ import (
 	"time"
 )
 
-// MaxInt returns the maximum of two ints
-func MaxInt(i, j int) int {
+// MaxCoord returns the maximum of two VoxelCoord
+func MaxCoord(i, j VoxelCoord) VoxelCoord {
 	if i >= j {
 		return i
 	}
 	return j
 }
 
-// MinInt returns the minimum of two ints
-func MinInt(i, j int) int {
+// MinCoord returns the minimum of two VoxelCoord
+func MinCoord(i, j VoxelCoord) VoxelCoord {
 	if i <= j {
 		return i
 	}
@@ -105,10 +105,82 @@ func (pt Point3d) XYZ() (VoxelCoord, VoxelCoord, VoxelCoord) {
 	return pt[0], pt[1], pt[2]
 }
 
+// IntX returns integer X voxel coordinate
+func (pt Point3d) IntX() int {
+	return int(pt[0])
+}
+
+// IntY returns integer Y voxel coordinate
+func (pt Point3d) IntY() int {
+	return int(pt[1])
+}
+
+// IntZ returns integer Z voxel coordinate
+func (pt Point3d) IntZ() int {
+	return int(pt[2])
+}
+
+// XYZ returns X, Y, and Z coordinates
+func (pt Point3d) IntXYZ() (int, int, int) {
+	return int(pt[0]), int(pt[1]), int(pt[2])
+}
+
+// SqrDistance returns the squared distance between two points
+func (pt Point3d) SqrDistance(pt2 Point3d) int {
+	dx := int(pt[0] - pt2[0])
+	dy := int(pt[1] - pt2[1])
+	dz := int(pt[2] - pt2[2])
+	return dx*dx + dy*dy + dz*dz
+}
+
 // String returns representation like "(1,2,3)"
 func (pt Point3d) String() string {
 	return "(" + pt[0].String() + "," + pt[1].String() + "," +
 		pt[2].String() + ")"
+}
+
+// VoxelsAtRadius returns an array of voxels at a given radius
+// within the XY plane.
+func (p Point3d) VoxelsAtRadius(radius, maxX, maxY int) (voxels []Point3d) {
+	if radius == 0 {
+		voxels = []Point3d{p}
+		return
+	}
+	r := VoxelCoord(radius)
+	x := p.X()
+	y := p.Y()
+	z := p.Z()
+	voxels = make([]Point3d, r*8)
+	minXCoord := MaxCoord(0, x-r)
+	maxXCoord := MinCoord(VoxelCoord(maxX), x+r)
+	minYCoord := MaxCoord(0, y-r)
+	maxYCoord := MinCoord(VoxelCoord(maxY), y+r)
+
+	// Check top line
+	if y-r >= 0 {
+		for ix := minXCoord; ix <= maxXCoord; ix++ {
+			voxels = append(voxels, Point3d{ix, y - r, z})
+		}
+	}
+	// Check bottom line
+	if y+r <= maxYCoord {
+		for ix := minXCoord; ix <= maxXCoord; ix++ {
+			voxels = append(voxels, Point3d{ix, y + r, z})
+		}
+	}
+	// Check left line
+	if x-r >= 0 {
+		for iy := minYCoord; iy <= maxYCoord; iy++ {
+			voxels = append(voxels, Point3d{x - r, iy, z})
+		}
+	}
+	// Check right line
+	if x+r <= maxXCoord {
+		for iy := minYCoord; iy <= maxYCoord; iy++ {
+			voxels = append(voxels, Point3d{x + r, iy, z})
+		}
+	}
+	return
 }
 
 // Bounds3d defines a bounding box in 3d using MinPt and MaxPt Point3d

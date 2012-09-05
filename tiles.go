@@ -128,20 +128,19 @@ func TileFilename(row int, col int, slice VoxelCoord) string {
 // GetSuperpixelTilePt returns a superpixel tile and tile coordinates
 // for a given 3d voxel point in a stack.
 func GetSuperpixelTilePt(stack TiledJsonStack, pt Point3d) (
-	superpixels SuperpixelImage, tileX int, tileY int) {
+	superpixels SuperpixelImage, tilePt Point3d) {
 
 	// Compute which tile this point falls within
-	x := int(pt.X())
-	y := int(pt.Y())
-	col := x / TileSize
-	row := y / TileSize
+	col := pt.X() / TileSize
+	row := pt.Y() / TileSize
 
-	relTilePath := TileFilename(row, col, pt.Z())
+	relTilePath := TileFilename(int(row), int(col), pt.Z())
 	superpixels, _, _ = ReadSuperpixelTile(stack, relTilePath)
 
 	// Determine relative point within this tile
-	tileX = int(pt.X()) - col*TileSize
-	tileY = superpixels.Bounds().Max.Y - (int(pt.Y()) - row*TileSize) - 1
+	tileX := pt.X() - col*TileSize
+	tileY := VoxelCoord(superpixels.Bounds().Max.Y) - (pt.Y() - row*TileSize) - 1
+	tilePt = Point3d{tileX, tileY, pt.Z()}
 	return
 }
 
@@ -157,11 +156,12 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) (bodyId BodyId,
 	}
 
 	// Get superpixel tile data
-	superpixels, tileX, tileY := GetSuperpixelTilePt(stack, pt)
+	superpixels, tilePt := GetSuperpixelTilePt(stack, pt)
 
 	// Get the body id
 	superpixel.Slice = uint32(pt.Z())
-	superpixel.Label = GetSuperpixelId(superpixels, tileX, tileY, format)
+	superpixel.Label = GetSuperpixelId(superpixels,
+		tilePt.IntX(), tilePt.IntY(), format)
 
 	if superpixel.Label == 0 {
 		log.Println("** Warning: PSD falls in ZERO SUPERPIXEL: ", pt)
@@ -176,7 +176,7 @@ func GetBodyOfLocation(stack TiledJsonStack, pt Point3d) (bodyId BodyId,
 // point in stack space and return the nearest non-zero body id.
 func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
 	excludeBodies BodySet, avoidBodies BodySet) (bodyId BodyId,
-	superpixel Superpixel, radius int) {
+	superpixel Superpixel, radius int, finalLocation Point3d) {
 
 	bounds, format := stack.TilesMetadata()
 	if !bounds.Include(pt) {
@@ -185,7 +185,7 @@ func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
 	}
 
 	// Get superpixel tile data
-	superpixels, tileX, tileY := GetSuperpixelTilePt(stack, pt)
+	superpixels, tilePt := GetSuperpixelTilePt(stack, pt)
 
 	// Check for body using increasing radii
 	superpixel.Slice = uint32(pt.Z())
@@ -194,15 +194,18 @@ func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
 	nextBestRadius := checkRadius
 	nextBestSuperpixel := uint32(0)
 	for radius = 0; radius < checkRadius; radius++ {
-		for _, pixel := range pixelsAtRadius(radius, tileX, tileY) {
-			spid := GetSuperpixelId(superpixels, pixel.X, pixel.Y, format)
+		for _, voxel := range tilePt.VoxelsAtRadius(radius, TileSize, TileSize) {
+			spid := GetSuperpixelId(superpixels, voxel.IntX(), voxel.IntY(), format)
 			if spid != 0 {
 				superpixel.Label = spid
 				bodyId = stack.SuperpixelToBody(superpixel)
 				_, found := excludeBodies[bodyId]
 				if !found {
-					nextBestSuperpixel = spid
-					nextBestRadius = radius
+					if nextBestRadius > radius {
+						nextBestSuperpixel = spid
+						nextBestRadius = radius
+						finalLocation = voxel
+					}
 					_, found = avoidBodies[bodyId]
 					if !found {
 						return
@@ -223,50 +226,5 @@ func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
 	superpixel.Label = nextBestSuperpixel
 	bodyId = stack.SuperpixelToBody(superpixel)
 	radius = nextBestRadius
-	return
-}
-
-// Some unexported code for pixel scanning
-type pixelPt struct {
-	X int
-	Y int
-}
-
-func pixelsAtRadius(r int, x int, y int) (pixels []pixelPt) {
-	pixels = make([]pixelPt, 8*r)
-	if r == 0 {
-		pixels = append(pixels, pixelPt{x, y})
-		return
-	}
-
-	minX := MaxInt(0, x-r)
-	maxX := MinInt(TileSize-1, x+r)
-	minY := MaxInt(0, y-r)
-	maxY := MinInt(TileSize-1, y+r)
-
-	// Check top line
-	if y-r >= 0 {
-		for ix := minX; ix <= maxX; ix++ {
-			pixels = append(pixels, pixelPt{ix, y - r})
-		}
-	}
-	// Check bottom line
-	if y+r < TileSize {
-		for ix := minX; ix <= maxX; ix++ {
-			pixels = append(pixels, pixelPt{ix, y + r})
-		}
-	}
-	// Check left line
-	if x-r >= 0 {
-		for iy := minY; iy <= maxY; iy++ {
-			pixels = append(pixels, pixelPt{x - r, iy})
-		}
-	}
-	// Check right line
-	if x+r < TileSize {
-		for iy := minY; iy <= maxY; iy++ {
-			pixels = append(pixels, pixelPt{x + r, iy})
-		}
-	}
 	return
 }
