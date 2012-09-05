@@ -91,12 +91,19 @@ type NamedBody struct {
 	TracingStats
 }
 
+func pythonEquivalent(b bool) string {
+	if b {
+		return "True"
+	}
+	return "False"
+}
+
 // WriteNeuroptikon emits a python call to define a neuron within Neuroptikon
 func (namedBody NamedBody) WriteNeuroptikon(writer io.Writer, isPre bool) {
 
 	code := fmt.Sprintf("findOrCreateBody('%s', %d, primary=%s, secondary=%s",
-		namedBody.Name, namedBody.Body, strconv.FormatBool(namedBody.IsPrimary),
-		strconv.FormatBool(namedBody.IsSecondary))
+		namedBody.Name, namedBody.Body, pythonEquivalent(namedBody.IsPrimary),
+		pythonEquivalent(namedBody.IsSecondary))
 	if len(namedBody.CellType) > 0 {
 		code += fmt.Sprintf(", cellType='%s'", namedBody.CellType)
 	}
