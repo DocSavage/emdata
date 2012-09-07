@@ -84,6 +84,7 @@ type NamedBody struct {
 	Name        string
 	CellType    string
 	Location    string
+	Center      Point3d
 	IsPrimary   bool
 	IsSecondary bool
 	Locked      bool
@@ -110,7 +111,7 @@ func (namedBody NamedBody) WriteNeuroptikon(writer io.Writer, isPre bool) {
 	if len(namedBody.Location) > 0 && namedBody.Location != "-" {
 		code += fmt.Sprintf(", regionName='%s'", namedBody.Location)
 	}
-	code += ")"
+	code += fmt.Sprintf(", center=%s)", namedBody.Center)
 	if isPre {
 		_, err := fmt.Fprintln(writer, "pre = "+code)
 		if err != nil {

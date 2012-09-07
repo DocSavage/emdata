@@ -128,7 +128,7 @@ func TileFilename(row int, col int, slice VoxelCoord) string {
 // GetSuperpixelTilePt returns a superpixel tile and tile coordinates
 // for a given 3d voxel point in a stack.
 func GetSuperpixelTilePt(stack TiledJsonStack, pt Point3d) (
-	superpixels SuperpixelImage, tilePt Point3d) {
+	superpixels SuperpixelImage, tilePt Point2d) {
 
 	// Compute which tile this point falls within
 	col := pt.X() / TileSize
@@ -140,7 +140,7 @@ func GetSuperpixelTilePt(stack TiledJsonStack, pt Point3d) (
 	// Determine relative point within this tile
 	tileX := pt.X() - col*TileSize
 	tileY := VoxelCoord(superpixels.Bounds().Max.Y) - (pt.Y() - row*TileSize) - 1
-	tilePt = Point3d{tileX, tileY, pt.Z()}
+	tilePt = Point2d{tileX, tileY}
 	return
 }
 
@@ -194,8 +194,8 @@ func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
 	nextBestRadius := checkRadius
 	nextBestSuperpixel := uint32(0)
 	for radius = 0; radius < checkRadius; radius++ {
-		for _, voxel := range tilePt.VoxelsAtRadius(radius, TileSize, TileSize) {
-			spid := GetSuperpixelId(superpixels, voxel.IntX(), voxel.IntY(), format)
+		for _, pixel := range tilePt.PixelsAtRadius(radius, TileSize-1, TileSize-1) {
+			spid := GetSuperpixelId(superpixels, pixel.IntX(), pixel.IntY(), format)
 			if spid != 0 {
 				superpixel.Label = spid
 				bodyId = stack.SuperpixelToBody(superpixel)
@@ -204,7 +204,11 @@ func GetNearestBodyOfLocation(stack TiledJsonStack, pt Point3d,
 					if nextBestRadius > radius {
 						nextBestSuperpixel = spid
 						nextBestRadius = radius
-						finalLocation = voxel
+						dx := pixel.IntX() - tilePt.IntX()
+						dy := pixel.IntY() - tilePt.IntY()
+						x := VoxelCoord(pt.IntX() + dx)
+						y := VoxelCoord(pt.IntY() + dy)
+						finalLocation = Point3d{x, y, pt.Z()}
 					}
 					_, found = avoidBodies[bodyId]
 					if !found {

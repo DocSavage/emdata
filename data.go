@@ -64,7 +64,7 @@ type BodyId int64
 type BodySet map[BodyId]bool
 
 // VoxelCoord holds a coordinate for a voxel.
-type VoxelCoord uint32
+type VoxelCoord int
 
 // SetWithString sets a VoxelCoord with a number encoded as a string.
 func (v *VoxelCoord) SetWithString(s string) error {
@@ -76,6 +76,84 @@ func (v *VoxelCoord) SetWithString(s string) error {
 // String returns the unicode representation.
 func (v VoxelCoord) String() string {
 	return strconv.Itoa(int(v))
+}
+
+// Point2d has X,Y coordinates with axes increasing right then down.
+type Point2d [2]VoxelCoord
+
+// X returns the X voxel coordinate
+func (pt Point2d) X() VoxelCoord {
+	return pt[0]
+}
+
+// Y returns the Y voxel coordinate
+func (pt Point2d) Y() VoxelCoord {
+	return pt[1]
+}
+
+// IntX returns integer X voxel coordinate
+func (pt Point2d) IntX() int {
+	return int(pt[0])
+}
+
+// IntY returns integer Y voxel coordinate
+func (pt Point2d) IntY() int {
+	return int(pt[1])
+}
+
+// SqrDistance returns the squared distance between two points
+func (pt Point2d) SqrDistance(pt2 Point2d) int {
+	dx := int(pt[0] - pt2[0])
+	dy := int(pt[1] - pt2[1])
+	return dx*dx + dy*dy
+}
+
+// String returns representation like "(1,2)"
+func (pt Point2d) String() string {
+	return "(" + pt[0].String() + "," + pt[1].String() + ")"
+}
+
+// PixelsAtRadius returns an array of pixels at a given radius
+// within the XY plane.
+func (p Point2d) PixelsAtRadius(radius, maxX, maxY int) (pixels []Point2d) {
+	if radius == 0 {
+		pixels = []Point2d{p}
+		return
+	}
+	r := VoxelCoord(radius)
+	x := p.X()
+	y := p.Y()
+	pixels = make([]Point2d, r*8)
+	minXCoord := MaxCoord(0, x-r)
+	maxXCoord := MinCoord(VoxelCoord(maxX), x+r)
+	minYCoord := MaxCoord(0, y-r)
+	maxYCoord := MinCoord(VoxelCoord(maxY), y+r)
+
+	// Check top line
+	if y-r >= 0 {
+		for ix := minXCoord; ix <= maxXCoord; ix++ {
+			pixels = append(pixels, Point2d{ix, y - r})
+		}
+	}
+	// Check bottom line
+	if y+r <= maxYCoord {
+		for ix := minXCoord; ix <= maxXCoord; ix++ {
+			pixels = append(pixels, Point2d{ix, y + r})
+		}
+	}
+	// Check left line
+	if x-r >= 0 {
+		for iy := minYCoord; iy <= maxYCoord; iy++ {
+			pixels = append(pixels, Point2d{x - r, iy})
+		}
+	}
+	// Check right line
+	if x+r <= maxXCoord {
+		for iy := minYCoord; iy <= maxYCoord; iy++ {
+			pixels = append(pixels, Point2d{x + r, iy})
+		}
+	}
+	return
 }
 
 // LocationToBodyMap holds 3d Point -> Body Id mappings
@@ -137,50 +215,6 @@ func (pt Point3d) SqrDistance(pt2 Point3d) int {
 func (pt Point3d) String() string {
 	return "(" + pt[0].String() + "," + pt[1].String() + "," +
 		pt[2].String() + ")"
-}
-
-// VoxelsAtRadius returns an array of voxels at a given radius
-// within the XY plane.
-func (p Point3d) VoxelsAtRadius(radius, maxX, maxY int) (voxels []Point3d) {
-	if radius == 0 {
-		voxels = []Point3d{p}
-		return
-	}
-	r := VoxelCoord(radius)
-	x := p.X()
-	y := p.Y()
-	z := p.Z()
-	voxels = make([]Point3d, r*8)
-	minXCoord := MaxCoord(0, x-r)
-	maxXCoord := MinCoord(VoxelCoord(maxX), x+r)
-	minYCoord := MaxCoord(0, y-r)
-	maxYCoord := MinCoord(VoxelCoord(maxY), y+r)
-
-	// Check top line
-	if y-r >= 0 {
-		for ix := minXCoord; ix <= maxXCoord; ix++ {
-			voxels = append(voxels, Point3d{ix, y - r, z})
-		}
-	}
-	// Check bottom line
-	if y+r <= maxYCoord {
-		for ix := minXCoord; ix <= maxXCoord; ix++ {
-			voxels = append(voxels, Point3d{ix, y + r, z})
-		}
-	}
-	// Check left line
-	if x-r >= 0 {
-		for iy := minYCoord; iy <= maxYCoord; iy++ {
-			voxels = append(voxels, Point3d{x - r, iy, z})
-		}
-	}
-	// Check right line
-	if x+r <= maxXCoord {
-		for iy := minYCoord; iy <= maxYCoord; iy++ {
-			voxels = append(voxels, Point3d{x + r, iy, z})
-		}
-	}
-	return
 }
 
 // Bounds3d defines a bounding box in 3d using MinPt and MaxPt Point3d

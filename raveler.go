@@ -152,6 +152,9 @@ type SuperpixelImage interface {
 	image.Image
 }
 
+// GetSuperpixelID returns the superpixel id at a given coord
+// within a superpixel image.  This routine handles 24-bit and
+// 16-bit superpixel images.
 func GetSuperpixelId(superpixels SuperpixelImage, x int, y int,
 	format SuperpixelFormat) (id uint32) {
 

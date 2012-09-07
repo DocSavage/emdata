@@ -324,7 +324,7 @@ def findOrCreateLocation(location):
 	return region
 
 def findOrCreateBody(bodyName, bodyId, cellType=None, regionName=None,
-	primary=False, secondary=False):
+	primary=False, secondary=False, center=None):
 
 	global CellTypes
 	cell = None
@@ -346,6 +346,10 @@ def findOrCreateBody(bodyName, bodyId, cellType=None, regionName=None,
 	neuron.addAttribute('BodyID', Attribute.INTEGER_TYPE, bodyId)
 	neuron.addAttribute('Primary', Attribute.BOOLEAN_TYPE, primary)
 	neuron.addAttribute('Secondary', Attribute.BOOLEAN_TYPE, secondary)
+	if center:
+		neuron.addAttribute('CenterX', Attribute.INTEGER_TYPE, center[0])
+		neuron.addAttribute('CenterY', Attribute.INTEGER_TYPE, center[1])
+		neuron.addAttribute('CenterZ', Attribute.INTEGER_TYPE, center[2])
 
     display.setLabel(neuron, bodyName)
     return neuron
