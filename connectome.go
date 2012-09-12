@@ -166,6 +166,8 @@ func (c Connectome) WriteJson(writer io.Writer) {
 			jsonC.connectivity[pre][post] = connection
 		}
 	}
+	log.Println("Json connectivity map has", len(jsonC.connectivity),
+		"rows")
 
 	// Write the temporary structure
 	m, err := json.Marshal(jsonC)

@@ -80,14 +80,15 @@ func (stats TracingStats) Print() {
 // NamedBody encapsulates data for a segmented body that has enough
 // shape to distinguish its morphology as a likely cell type.
 type NamedBody struct {
-	Body        BodyId
-	Name        string
-	CellType    string
-	Location    string
-	Center      Point3d
-	IsPrimary   bool
-	IsSecondary bool
-	Locked      bool
+	Body         BodyId
+	Name         string
+	CellType     string
+	Location     string
+	Center       Point3d
+	NumCenterPts int
+	IsPrimary    bool
+	IsSecondary  bool
+	Locked       bool
 	SynapseStats
 	TracingStats
 }
@@ -111,7 +112,10 @@ func (namedBody NamedBody) WriteNeuroptikon(writer io.Writer, isPre bool) {
 	if len(namedBody.Location) > 0 && namedBody.Location != "-" {
 		code += fmt.Sprintf(", regionName='%s'", namedBody.Location)
 	}
-	code += fmt.Sprintf(", center=%s)", namedBody.Center)
+	if namedBody.NumCenterPts > 0 {
+		code += fmt.Sprintf(", center=%s", namedBody.Center)
+	}
+	code += ")"
 	if isPre {
 		_, err := fmt.Fprintln(writer, "pre = "+code)
 		if err != nil {

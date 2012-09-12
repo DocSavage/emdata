@@ -203,6 +203,13 @@ func (pt Point3d) IntXYZ() (int, int, int) {
 	return int(pt[0]), int(pt[1]), int(pt[2])
 }
 
+// Add accumulates the passed point coordinates into current point.
+func (pt *Point3d) Add(pt2 Point3d) {
+	pt[0] += pt2[0]
+	pt[1] += pt2[1]
+	pt[2] += pt2[2]
+}
+
 // SqrDistance returns the squared distance between two points
 func (pt Point3d) SqrDistance(pt2 Point3d) int {
 	dx := int(pt[0] - pt2[0])

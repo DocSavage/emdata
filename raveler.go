@@ -283,10 +283,9 @@ type bodySegment struct {
 func (spToBodyMap SuperpixelToBodyMap) makeSegmentMaps() map[bodySegment]segmentId {
 	segmentMap := make(map[bodySegment]segmentId)
 	curSegment := segmentId(1)
+	segmentMap[bodySegment{0, 0}] = 0
 	for superpixel, bodyId := range spToBodyMap {
-		if superpixel.Label == 0 {
-			segmentMap[bodySegment{0, superpixel.Slice}] = 0
-		} else {
+		if superpixel.Label != 0 {
 			segment := bodySegment{bodyId, superpixel.Slice}
 			_, found := segmentMap[segment]
 			if !found {
@@ -342,9 +341,9 @@ func (spToBodyMap SuperpixelToBodyMap) WriteTxtMaps(outputDir string) {
 		}
 		defer file.Close()
 		lineWriter := bufio.NewWriter(file)
-		for bodyPlane, segmentNum := range segmentMap {
+		for segment, id := range segmentMap {
 			_, err := fmt.Fprintf(lineWriter, "%8d %8d\n",
-				segmentNum, bodyPlane.bodyId)
+				id, segment.bodyId)
 			if err != nil {
 				log.Fatalln("Error: unable to write segment->body map:", err)
 			}
