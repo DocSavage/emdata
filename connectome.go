@@ -335,7 +335,7 @@ def findOrCreateBody(bodyName, bodyId, cellType=None, regionName=None,
 		if cellType in CellTypes:
 			cell = CellTypes[cellType]
 		else:
-			cell = library.neuron_class.NeuronClass(None,
+			cell = library.neuron_class.NeuronClass(identifier=cellType,
 				name=cellType, abbreviation=cellType)
 			CellTypes[cellType] = cell
 
@@ -345,16 +345,16 @@ def findOrCreateBody(bodyName, bodyId, cellType=None, regionName=None,
 	    	region = findOrCreateLocation(regionName)
 	    	neuron = network.createNeuron(name=bodyName, neuronClass=cell, region=region)
 	    else:
-	    	neuron = network.createNeuron(name=bodyName, neuronClass=cell)
-	neuron.addAttribute('BodyID', Attribute.INTEGER_TYPE, bodyId)
-	neuron.addAttribute('Primary', Attribute.BOOLEAN_TYPE, primary)
-	neuron.addAttribute('Secondary', Attribute.BOOLEAN_TYPE, secondary)
-	if center:
-		neuron.addAttribute('CenterX', Attribute.INTEGER_TYPE, center[0])
-		neuron.addAttribute('CenterY', Attribute.INTEGER_TYPE, center[1])
-		neuron.addAttribute('CenterZ', Attribute.INTEGER_TYPE, center[2])
+	    	neuron = network.createNeuron(name=bodyName, neuronClass=cell, region=None)
+	    neuron.addAttribute('BodyID', Attribute.INTEGER_TYPE, bodyId)
+	    neuron.addAttribute('Primary', Attribute.BOOLEAN_TYPE, primary)
+	    neuron.addAttribute('Secondary', Attribute.BOOLEAN_TYPE, secondary)
+	    if center:
+		    neuron.addAttribute('CenterX', Attribute.INTEGER_TYPE, center[0])
+		    neuron.addAttribute('CenterY', Attribute.INTEGER_TYPE, center[1])
+		    neuron.addAttribute('CenterZ', Attribute.INTEGER_TYPE, center[2])
+        display.setLabel(neuron, bodyName)
 
-    display.setLabel(neuron, bodyName)
     return neuron
 
 def addConnection(pre, post, strength, tbarCoord, psdCoord):
@@ -368,10 +368,12 @@ def addConnection(pre, post, strength, tbarCoord, psdCoord):
 	connection.addAttribute('PsdZ', Attribute.INTEGER_TYPE, psdCoord[2])
 
 neurons = {}
+
+network.setBulkLoading(True)
 `
 
-const displayCode = `
-display.performLayout()
+const endCode = `
+network.setBulkLoading(False)
 `
 
 // WriteNeuroptikon writes connectome data in a python script that can be
@@ -400,7 +402,7 @@ func (c Connectome) WriteNeuroptikon(writer io.Writer) {
 		}
 	}
 
-	_, err = fmt.Fprintln(bufferedWriter, displayCode)
+	_, err = fmt.Fprintln(bufferedWriter, endCode)
 	if err != nil {
 		log.Fatalf("ERROR: Unable to write Neuroptikon code: %s", err)
 	}
