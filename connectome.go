@@ -148,7 +148,8 @@ type jsonConnectome struct {
 	neurons      NamedBodyList
 	connectivity jsonConnectivityMap
 }
-type jsonConnectivityMap map[string](map[string]Connection)
+type jsonConnectionMap map[string]Connection
+type jsonConnectivityMap map[string]jsonConnectionMap
 
 // WriteJson writes connectome data in JSON format
 func (c Connectome) WriteJson(writer io.Writer) {
