@@ -413,11 +413,17 @@ func (spToBodyMap SuperpixelToBodyMap) WriteTxtMaps(outputDir string) {
 			log.Fatalf("FATAL ERROR: Could not create %s: %s", filename, err)
 		}
 		lineWriter := bufio.NewWriter(file)
+		_, err = fmt.Fprintf(lineWriter, "%8d %8d\n", 0, 0)
+		if err != nil {
+			log.Fatalln("Error: unable to write segment->body map:", err)
+		}
 		for _, segBody := range segBodyList {
-			_, err := fmt.Fprintf(lineWriter, "%8d %8d\n",
-				segBody.segment, segBody.body)
-			if err != nil {
-				log.Fatalln("Error: unable to write segment->body map:", err)
+			if segBody.segment != 0 {
+				_, err := fmt.Fprintf(lineWriter, "%8d %8d\n",
+					segBody.segment, segBody.body)
+				if err != nil {
+					log.Fatalln("Error: unable to write segment->body map:", err)
+				}
 			}
 		}
 		file.Close()
