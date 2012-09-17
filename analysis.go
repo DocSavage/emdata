@@ -155,19 +155,39 @@ func (bodyMap NamedBodyMap) SortByName() NamedBodyList {
 	return list
 }
 
+// NamedBodyOptions encapsulates a named body CSV filename and optionaly
+// a list of body ids to use.
+type NamedBodyOptions struct {
+	Filename  string
+	BodyIds   BodySet
+	BodyNames BodyNameSet
+}
+
+func (options NamedBodyOptions) bodyIdSelected(id BodyId) bool {
+	_, found := options.BodyIds[id]
+	return found
+}
+
+func (options NamedBodyOptions) bodyNameSelected(name string) bool {
+	_, found := options.BodyNames[name]
+	return found
+}
+
 // ReadNamedBodiesCsv reads in a named bodies CSV file and returns
 // a map from BodyID to NamedBody struct.  The first line is
 // assumed to be a header and is skipped.
-func ReadNamedBodiesCsv(filename string) (namedBodyMap NamedBodyMap) {
+func ReadNamedBodiesCsv(params NamedBodyOptions) (namedBodyMap NamedBodyMap) {
 	namedBodyMap = make(NamedBodyMap)
 	var namedFile *os.File
-	namedFile, err := os.Open(filename)
+	namedFile, err := os.Open(params.Filename)
 	if err != nil {
 		log.Fatalf("FATAL ERROR: Could not open named bodies file: %s [%s]",
-			filename, err)
+			params.Filename, err)
 	}
 	defer namedFile.Close()
 	reader := csv.NewReader(namedFile)
+	dontCheckBodyId := len(params.BodyIds) == 0
+	dontCheckBodyName := len(params.BodyNames) == 0
 	for {
 		items, err := reader.Read()
 		if err == io.EOF {
@@ -186,22 +206,28 @@ func ReadNamedBodiesCsv(filename string) (namedBodyMap NamedBodyMap) {
 					"skipping named body line:", items)
 				continue
 			}
-			namedBody.Body = BodyId(id)
-			namedBody.Name = items[1]
-			if len(items) > 2 {
-				namedBody.CellType = items[2]
-				namedBody.Location = items[3]
-				namedBody.IsPrimary = (items[4] == "primary")
-				namedBody.IsSecondary = (items[5] == "secondary")
-				if len(items) >= 7 && items[6] == "lock" {
-					namedBody.Locked = true
+			bodyId := BodyId(id)
+			name := items[1]
+			if (dontCheckBodyId || params.bodyIdSelected(bodyId)) &&
+				(dontCheckBodyName || params.bodyNameSelected(name)) {
+
+				namedBody.Body = bodyId
+				namedBody.Name = name
+				if len(items) > 2 {
+					namedBody.CellType = items[2]
+					namedBody.Location = items[3]
+					namedBody.IsPrimary = (items[4] == "primary")
+					namedBody.IsSecondary = (items[5] == "secondary")
+					if len(items) >= 7 && items[6] == "lock" {
+						namedBody.Locked = true
+					}
 				}
+				namedBodyMap[namedBody.Body] = namedBody
 			}
-			namedBodyMap[namedBody.Body] = namedBody
 		}
 	}
 	log.Println("Read", len(namedBodyMap), "named bodies from file:",
-		filename)
+		params.Filename)
 	return
 }
 

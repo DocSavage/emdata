@@ -144,40 +144,59 @@ func ReadGobFile(filename string) (c *Connectome) {
 	return
 }
 
-type jsonConnectome struct {
-	neurons      NamedBodyList
-	connectivity jsonConnectivityMap
+func writeJsonLine(writer io.Writer, text string) {
+	_, err := fmt.Fprintln(writer, text)
+	if err != nil {
+		log.Fatalln("ERROR: Unable to write JSON code:", err)
+	}
 }
-type jsonConnectionMap map[string]Connection
-type jsonConnectivityMap map[string]jsonConnectionMap
 
 // WriteJson writes connectome data in JSON format
 func (c Connectome) WriteJson(writer io.Writer) {
-	// Create a JSON-able structure that has only string keys
-	var jsonC jsonConnectome
-	jsonC.neurons = c.Neurons.SortByName()
-	jsonC.connectivity = make(jsonConnectivityMap)
+	numBodies := len(c.Neurons)
+	writeJsonLine(writer, "{")
 
-	for preId, connections := range c.Connectivity {
-		pre := fmt.Sprintf("Body %d", preId)
-		jsonC.connectivity[pre] = make(map[string]Connection,
-			len(connections))
-		for postId, connection := range connections {
-			post := fmt.Sprintf("Body %d", postId)
-			jsonC.connectivity[pre][post] = connection
+	// Write named body list as object with list of NamedBody objects
+	writeJsonLine(writer, "\"bodies\": [")
+	first := true
+	for _, namedBody := range c.Neurons {
+		m, err := json.Marshal(namedBody)
+		if err != nil {
+			log.Fatalf("Error in writing connectome json: %s", err)
 		}
+		var buf bytes.Buffer
+		if first {
+			first = false
+		} else {
+			buf.Write([]byte(",\n"))
+		}
+		json.Indent(&buf, m, "", "    ")
+		buf.WriteTo(writer)
 	}
-	log.Println("Json connectivity map has", len(jsonC.connectivity),
-		"rows")
+	writeJsonLine(writer, "],")
 
-	// Write the temporary structure
-	m, err := json.Marshal(jsonC)
-	if err != nil {
-		log.Fatalf("Error in writing connectome json: %s", err)
+	// Write connections as a matrix (list of lists of ints)
+	writeJsonLine(writer, "\"connections\": [")
+	connectionsList := make([]string, 0, numBodies)
+	for bodyId, _ := range c.Neurons {
+		bodyConnectMap, bodyFound := c.Connectivity[bodyId]
+		strengthsList := make([]string, 0, numBodies)
+		for bodyId2, _ := range c.Neurons {
+			strength := 0
+			if bodyFound {
+				connection, connectFound := bodyConnectMap[bodyId2]
+				if connectFound {
+					strength = len(connection)
+				}
+			}
+			strengthsList = append(strengthsList,
+				fmt.Sprintf("%d", strength))
+		}
+		connectionsList = append(connectionsList,
+			fmt.Sprintf("[%s]", strings.Join(strengthsList, ",")))
 	}
-	var buf bytes.Buffer
-	json.Indent(&buf, m, "", "    ")
-	buf.WriteTo(writer)
+	writeJsonLine(writer, strings.Join(connectionsList, ",\n")+"]")
+	writeJsonLine(writer, "}")
 }
 
 // WriteJsonFile writes connectome data into a JSON file.
@@ -253,19 +272,19 @@ func (c *Connectome) AddSynapse(s *Synapse) {
 /*
 // Add returns a connectome that's the sum of two connectomes.
 func (c1 Connectome) Add(c2 Connectome) (sum Connectome) {
-	sum = make(Connectome)
-	for body1, connections := range c1 {
-		sum[body1] = make(map[BodyId]int)
-		for body2, strength := range connections {
-			sum[body1][body2] = strength
-		}
-	}
-	for body1, connections := range c2 {
-		for body2, strength := range connections {
-			sum.AddConnection(body1, body2, strength)
-		}
-	}
-	return
+    sum = make(Connectome)
+    for body1, connections := range c1 {
+        sum[body1] = make(map[BodyId]int)
+        for body2, strength := range connections {
+            sum[body1][body2] = strength
+        }
+    }
+    for body1, connections := range c2 {
+        for body2, strength := range connections {
+            sum.AddConnection(body1, body2, strength)
+        }
+    }
+    return
 }
 */
 
@@ -321,51 +340,51 @@ import library.neuron_class
 CellTypes = {}
 
 def findOrCreateLocation(location):
-	region = network.findRegion(name=location)
-	if not region:
-		region = network.createRegion(name=location)
-	return region
+    region = network.findRegion(name=location)
+    if not region:
+        region = network.createRegion(name=location)
+    return region
 
 def findOrCreateBody(bodyName, bodyId, cellType=None, regionName=None,
-	primary=False, secondary=False, center=None):
+    primary=False, secondary=False, center=None):
 
-	global CellTypes
-	cell = None
-	if cellType:
-		if cellType in CellTypes:
-			cell = CellTypes[cellType]
-		else:
-			cell = library.neuron_class.NeuronClass(identifier=cellType,
-				name=cellType, abbreviation=cellType)
-			CellTypes[cellType] = cell
+    global CellTypes
+    cell = None
+    if cellType:
+        if cellType in CellTypes:
+            cell = CellTypes[cellType]
+        else:
+            cell = library.neuron_class.NeuronClass(identifier=cellType,
+                name=cellType, abbreviation=cellType)
+            CellTypes[cellType] = cell
 
     neuron = network.findNeuron(name=bodyName)
     if not neuron:
-	    if regionName:
-	    	region = findOrCreateLocation(regionName)
-	    	neuron = network.createNeuron(name=bodyName, neuronClass=cell, region=region)
-	    else:
-	    	neuron = network.createNeuron(name=bodyName, neuronClass=cell, region=None)
-	    neuron.addAttribute('BodyID', Attribute.INTEGER_TYPE, bodyId)
-	    neuron.addAttribute('Primary', Attribute.BOOLEAN_TYPE, primary)
-	    neuron.addAttribute('Secondary', Attribute.BOOLEAN_TYPE, secondary)
-	    if center:
-		    neuron.addAttribute('CenterX', Attribute.INTEGER_TYPE, center[0])
-		    neuron.addAttribute('CenterY', Attribute.INTEGER_TYPE, center[1])
-		    neuron.addAttribute('CenterZ', Attribute.INTEGER_TYPE, center[2])
+        if regionName:
+            region = findOrCreateLocation(regionName)
+            neuron = network.createNeuron(name=bodyName, neuronClass=cell, region=region)
+        else:
+            neuron = network.createNeuron(name=bodyName, neuronClass=cell, region=None)
+        neuron.addAttribute('BodyID', Attribute.INTEGER_TYPE, bodyId)
+        neuron.addAttribute('Primary', Attribute.BOOLEAN_TYPE, primary)
+        neuron.addAttribute('Secondary', Attribute.BOOLEAN_TYPE, secondary)
+        if center:
+            neuron.addAttribute('CenterX', Attribute.INTEGER_TYPE, center[0])
+            neuron.addAttribute('CenterY', Attribute.INTEGER_TYPE, center[1])
+            neuron.addAttribute('CenterZ', Attribute.INTEGER_TYPE, center[2])
         display.setLabel(neuron, bodyName)
 
     return neuron
 
 def addConnection(pre, post, strength, tbarCoord, psdCoord):
-	connection = pre.synapseOn(post)
-	connection.addAttribute('Count', Attribute.INTEGER_TYPE, strength)
-	connection.addAttribute('TbarX', Attribute.INTEGER_TYPE, tbarCoord[0])
-	connection.addAttribute('TbarY', Attribute.INTEGER_TYPE, tbarCoord[1])
-	connection.addAttribute('TbarZ', Attribute.INTEGER_TYPE, tbarCoord[2])
-	connection.addAttribute('PsdX', Attribute.INTEGER_TYPE, psdCoord[0])
-	connection.addAttribute('PsdY', Attribute.INTEGER_TYPE, psdCoord[1])
-	connection.addAttribute('PsdZ', Attribute.INTEGER_TYPE, psdCoord[2])
+    connection = pre.synapseOn(post)
+    connection.addAttribute('Count', Attribute.INTEGER_TYPE, strength)
+    connection.addAttribute('TbarX', Attribute.INTEGER_TYPE, tbarCoord[0])
+    connection.addAttribute('TbarY', Attribute.INTEGER_TYPE, tbarCoord[1])
+    connection.addAttribute('TbarZ', Attribute.INTEGER_TYPE, tbarCoord[2])
+    connection.addAttribute('PsdX', Attribute.INTEGER_TYPE, psdCoord[0])
+    connection.addAttribute('PsdY', Attribute.INTEGER_TYPE, psdCoord[1])
+    connection.addAttribute('PsdZ', Attribute.INTEGER_TYPE, psdCoord[2])
 
 neurons = {}
 

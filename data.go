@@ -34,6 +34,7 @@ package emdata
 import (
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -62,6 +63,55 @@ type BodyId int64
 
 // BodySet is a set of body IDs.
 type BodySet map[BodyId]bool
+
+// Set allows a variable number of body ids to be added to BodySet
+func (bodies BodySet) Set(ids ...BodyId) {
+	for _, id := range ids {
+		bodies[id] = true
+	}
+}
+
+// Unset allows a variable number of body ids to be removed from BodySet
+func (bodies BodySet) Unset(ids ...BodyId) {
+	for _, id := range ids {
+		delete(bodies, id)
+	}
+}
+
+// String converts a BodySet to a string of body IDs
+func (bodies BodySet) String() string {
+	items := []string{}
+	for bodyId, _ := range bodies {
+		items = append(items, strconv.Itoa(int(bodyId)))
+	}
+	return strings.Join(items, ", ")
+}
+
+// BodyNameSet is a set of body names
+type BodyNameSet map[string]bool
+
+// Set allows a variable number of strings to be added to a BodyNameSet
+func (bodies BodyNameSet) Set(names ...string) {
+	for _, name := range names {
+		bodies[name] = true
+	}
+}
+
+// Unset allows a variable number of strings to be removed from BodyNameSet
+func (bodies BodyNameSet) Unset(names ...string) {
+	for _, name := range names {
+		delete(bodies, name)
+	}
+}
+
+// String converts a BodyNameSet to a single string
+func (bodies BodyNameSet) String() string {
+	items := []string{}
+	for bodyName, _ := range bodies {
+		items = append(items, bodyName)
+	}
+	return strings.Join(items, ", ")
+}
 
 // VoxelCoord holds a coordinate for a voxel.
 type VoxelCoord int
