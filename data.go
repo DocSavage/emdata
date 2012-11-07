@@ -32,11 +32,40 @@
 package emdata
 
 import (
+	"log"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 )
+
+type ValueDescription struct {
+	Value       interface{}
+	Description string
+}
+
+// GetValueDescriptions returns a map of a struct fields' values and tag strings
+func GetValueDescriptions(foo interface{}) map[string]ValueDescription {
+	typ := reflect.TypeOf(foo)
+	// If a pointer is passed, dereference it
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	m := map[string]ValueDescription{}
+	if typ.Kind() != reflect.Struct {
+		log.Fatalf("GetValueDescription() called with a non-struct!")
+	}
+
+	elem := reflect.ValueOf(foo).Elem()
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if !field.Anonymous {
+			m[field.Name] = ValueDescription{elem.Field(i).Interface(), string(field.Tag)}
+		}
+	}
+	return m
+}
 
 // MaxCoord returns the maximum of two VoxelCoord
 func MaxCoord(i, j VoxelCoord) VoxelCoord {

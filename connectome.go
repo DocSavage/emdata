@@ -123,13 +123,14 @@ func (c Connectome) WriteGobFile(filename string) {
 }
 
 // ReadGob reads a connectome from Gob format
-func ReadGob(reader io.Reader) (c *Connectome) {
+func ReadGob(reader io.Reader) *Connectome {
 	dec := gob.NewDecoder(reader)
-	err := dec.Decode(c)
+	var connectome Connectome
+	err := dec.Decode(&connectome)
 	if err != nil {
-		log.Fatalf("Error in reading connectom gob: %s", err)
+		log.Fatalf("Error in reading connectome gob: %s", err)
 	}
-	return
+	return &connectome
 }
 
 // ReadGobFile writes connectome data into a CSV file.
@@ -570,7 +571,29 @@ func (nc NamedConnectome) MatchingNames(patterns []string) (matches []string) {
 	return
 }
 
-// WriteCsv writes connectome data in CSV format with body names as
+// ExtractNamedConnectome returns a NamedConnectome from a Connectome
+func ExtractNamedConnectome(c *Connectome) (nc *NamedConnectome) {
+	nc = new(NamedConnectome)
+	namedBodyList := c.Neurons.SortByName()
+	for _, namedBody1 := range namedBodyList {
+		for _, namedBody2 := range namedBodyList {
+			strength := 0
+			connections, preFound := c.Connectivity[namedBody1.Body]
+			if preFound {
+				connection, postFound := connections[namedBody2.Body]
+				if postFound {
+					strength = connection.Strength()
+				}
+			}
+			if strength > 0 {
+				nc.AddConnection(namedBody1.Name, namedBody2.Name, strength)
+			}
+		}
+	}
+	return
+}
+
+// ReadCsv reads connectome data in CSV format with body names as
 // headers for rows/columns
 func ReadCsv(reader io.Reader) (nc *NamedConnectome) {
 	nc = new(NamedConnectome)
@@ -611,7 +634,7 @@ func ReadCsv(reader io.Reader) (nc *NamedConnectome) {
 	return
 }
 
-// WriteCsvFile writes connectome data into a CSV file.
+// ReadCsvFile writes connectome data into a CSV file.
 func ReadCsvFile(filename string) (nc *NamedConnectome) {
 	file, err := os.Open(filename)
 	if err != nil {

@@ -77,6 +77,132 @@ func (stats TracingStats) Print() {
 		stats.TracedLeaves)
 }
 
+// BodyStats describes postsynapse stats for a given body.
+type BodyStats struct {
+	NumPostSyn          int "Number of postsynaptic sites"
+	NumDenseNamed       int "Postsynaptic sites traced densely to named body"
+	NumTracedNamed2     int "Postsynaptic sites traced sparsely by at least 2 to named body"
+	NumTracedNamed1     int "Postsynaptic sites traced sparsely by at least 1 to named body"
+	NumTracedCantFollow int "Postsynaptic sites unable to be traced to any anchor"
+	NumTracedCantName   int "Postsynaptic sites unable to be traced to named body"
+	NumUntraced         int "Postsynaptic sites not densely or sparsely traced"
+}
+
+// NamedStats gives a map from body name to the postsynaptic stats
+type NamedStats map[string]BodyStats
+
+func (stats *NamedStats) AddPostSyn(name string) {
+	bodyStats, _ := (*stats)[name]
+	bodyStats.NumPostSyn++
+	(*stats)[name] = bodyStats
+}
+
+func (stats *NamedStats) AddDenseNamed(name string) {
+	bodyStats, _ := (*stats)[name]
+	bodyStats.NumDenseNamed++
+	(*stats)[name] = bodyStats
+}
+
+func (stats *NamedStats) AddTracedNamed2(name string) {
+	bodyStats, _ := (*stats)[name]
+	bodyStats.NumTracedNamed2++
+	(*stats)[name] = bodyStats
+}
+
+func (stats *NamedStats) AddTracedNamed1(name string) {
+	bodyStats, _ := (*stats)[name]
+	bodyStats.NumTracedNamed1++
+	(*stats)[name] = bodyStats
+}
+
+func (stats *NamedStats) AddTracedCantFollow(name string) {
+	bodyStats, _ := (*stats)[name]
+	bodyStats.NumTracedCantFollow++
+	(*stats)[name] = bodyStats
+}
+
+func (stats *NamedStats) AddTracedCantName(name string) {
+	bodyStats, _ := (*stats)[name]
+	bodyStats.NumTracedCantName++
+	(*stats)[name] = bodyStats
+}
+
+func (stats *NamedStats) AddUntraced(name string) {
+	bodyStats, _ := (*stats)[name]
+	bodyStats.NumUntraced++
+	(*stats)[name] = bodyStats
+}
+
+// WriteCsv writes named body stats in CSV format
+func (stats NamedStats) WriteCsv(writer io.Writer) {
+
+	csvWriter := csv.NewWriter(writer)
+	nameList := stats.GetSortedNames()
+
+	// Print header along first row
+	record := []string{"Body Name", "# PSDs", "PSDs traced densely to named",
+		"PSDs traced sparsely (>= 2) to named", "PSDs traced sparsely (>= 1) to named",
+		"PSDs untraced to any anchor", "PSDs untraced to any named",
+		"PSDs not densely or sparsely traced"}
+	err := csvWriter.Write(record)
+	if err != nil {
+		log.Fatalln("ERROR: Unable to write header to CSV:", err)
+	}
+
+	// For every subsequent row, the first column is body name,
+	// and the rest are the stats.
+	for _, name := range nameList {
+		record := []string{
+			name, strconv.Itoa(stats[name].NumPostSyn),
+			strconv.Itoa(stats[name].NumDenseNamed),
+			strconv.Itoa(stats[name].NumTracedNamed2),
+			strconv.Itoa(stats[name].NumTracedNamed1),
+			strconv.Itoa(stats[name].NumTracedCantFollow),
+			strconv.Itoa(stats[name].NumTracedCantName),
+			strconv.Itoa(stats[name].NumUntraced)}
+		err := csvWriter.Write(record)
+		if err != nil {
+			log.Fatalln("ERROR: Unable to write line of CSV for ",
+				"named body", name, ":", err)
+		}
+	}
+	csvWriter.Flush()
+}
+
+// WriteCsvFile writes named body stats into a CSV file.
+func (stats NamedStats) WriteCsvFile(filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Fatalf("ERROR: Failed to create named body stats csv file: %s [%s]\n",
+			filename, err)
+	}
+	stats.WriteCsv(file)
+	file.Close()
+}
+
+// NameList implements sort.Interface
+type NameList []string
+
+func (list NameList) Len() int {
+	return len(list)
+}
+func (list NameList) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
+}
+func (list NameList) Less(i, j int) bool {
+	return list[i] < list[j]
+}
+
+// GetSortedNames returns a list of string keys sorted in ascending order
+func (stats NamedStats) GetSortedNames() NameList {
+	list := make(NameList, 0, len(stats))
+	for name, _ := range stats {
+		list = append(list, name)
+	}
+	sort.Sort(list)
+	return list
+}
+
 // NamedBody encapsulates data for a segmented body that has enough
 // shape to distinguish its morphology as a likely cell type.
 type NamedBody struct {
@@ -237,11 +363,12 @@ func ReadNamedBodiesCsv(params NamedBodyOptions) (namedBodyMap NamedBodyMap) {
 type TracingResult int64
 
 const (
+	NoResult  TracingResult = -100
 	Orphan    TracingResult = -2
 	Leaves    TracingResult = -1
 	Edge      TracingResult = 0
 	MinAnchor TracingResult = 1
-	// Any TracingResult >= Anchor is Body Id of anchor
+	// Any TracingResult >= MinAnchor is Body Id of anchor
 )
 
 // String returns "Orphan", "Leaves" or the stringified body ID
