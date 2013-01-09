@@ -90,6 +90,10 @@ func MinCoord(i, j VoxelCoord) VoxelCoord {
 // non-unique conditions using the same value, e.g., orphan or leaves.
 type BodyId int64
 
+func (bodyId BodyId) String() string {
+	return strconv.Itoa(int(bodyId))
+}
+
 // BodySet is a set of body IDs.
 type BodySet map[BodyId]bool
 
@@ -111,7 +115,7 @@ func (bodies BodySet) Unset(ids ...BodyId) {
 func (bodies BodySet) String() string {
 	items := []string{}
 	for bodyId, _ := range bodies {
-		items = append(items, strconv.Itoa(int(bodyId)))
+		items = append(items, bodyId.String())
 	}
 	return strings.Join(items, ", ")
 }

@@ -137,6 +137,20 @@ func ReadBodiesJson(filename string) (bodies *JsonBodies) {
 	return bodies
 }
 
+// StackAnchorBodySet returns a BodySet a stack's anchor bodies
+// using the default body annotations file of that stack.
+func StackAnchorBodySet(stackDir string) BodySet {
+	anchorBodies := make(BodySet)
+	annotationsFilename := StackBodiesJsonFilename(stackDir)
+	jsonBodies := ReadBodiesJson(annotationsFilename)
+	for _, jsonBody := range jsonBodies.Data {
+		if jsonBody.AnchorComment() {
+			anchorBodies[jsonBody.Body] = true
+		}
+	}
+	return anchorBodies
+}
+
 // SynapseIndex provides an index to specific elements within JsonSynapses
 type SynapseIndex struct {
 	tbarUid, psdUid string
@@ -319,11 +333,11 @@ func (psd *JsonPsd) IsAnchored() bool {
 	return false
 }
 
-// CheckTracings checks all tracings for a given PSD and sees which of them
+// CheckNamedTracings checks all tracings for a given PSD and sees which of them
 // go to a named body per the namedBodyMap parameter.  If so, it returns
 // the traced body as well as a map of # of tracings that wind up in each
 // named body.
-func (psd *JsonPsd) CheckTracings(namedBodyMap NamedBodyMap) (tracedBody BodyId,
+func (psd *JsonPsd) CheckNamedTracings(namedBodyMap NamedBodyMap) (tracedBody BodyId,
 	numTracedToNamedBody int, numTracesPerNamedBody map[BodyId]int) {
 
 	tracedBody = 0
@@ -339,6 +353,135 @@ func (psd *JsonPsd) CheckTracings(namedBodyMap NamedBodyMap) (tracedBody BodyId,
 				numTracedToNamedBody++
 			}
 		}
+	}
+	return
+}
+
+// Specify the number of outcomes for a PSD tracing between two proofreaders
+type PsdTracingResult int
+
+const (
+	PsdNot2Tracings PsdTracingResult = iota
+	PsdOrphanOrphan
+	PsdOrphanAnchor
+	PsdOrphanNamed
+	PsdAnchorDisagree
+	PsdAnchorNamed
+	PsdAnchorAgree
+	PsdNamedDisagree
+	PsdNamedAgree
+)
+
+const (
+	NoTraces = iota
+	TracedOrphan
+	TracedAnchor
+	TracedNamed
+)
+
+// CheckTracings checks all tracings for a given PSD and returns the result of the
+// proofreading by two proofreaders and if they agree, reachedBody has the body id.
+// A map is returned that shows how many tracings went to each body in the case
+// of disagreement.  A comment is also returned that describes the number of 
+// agreements or how they disagree.
+func (psd *JsonPsd) CheckTracings(namedBodyMap NamedBodyMap) (result PsdTracingResult,
+	reachedBody BodyId, reachedName string, comment string,
+	numTracesPerBody map[BodyId]int) {
+
+	reachedBody = 0
+	reachedName = "?"
+	comment = ""
+	if len(psd.Tracings) < 2 {
+		result = PsdNot2Tracings
+		log.Printf("Warning!  Detected %d tracings for psd at location %s\n",
+			len(psd.Tracings), psd.Location)
+		return
+	}
+	numTracesPerBody = map[BodyId]int{}
+
+	prevResult := NoTraces
+	prevReachedBody := BodyId(0)
+	tracingsAnalyzed := 0
+	for _, tracing := range psd.Tracings {
+		if tracingsAnalyzed == 2 {
+			break // If >= 3 tracings, just use first 2
+		}
+		switch {
+		case tracing.Result < Edge:
+			if prevResult != NoTraces {
+				switch prevResult {
+				case TracedOrphan:
+					result = PsdOrphanOrphan
+					comment = "Both are orphan"
+				case TracedAnchor:
+					result = PsdOrphanAnchor
+					comment = fmt.Sprintf("1 reached anchor body")
+				case TracedNamed:
+					result = PsdOrphanNamed
+					comment = fmt.Sprintf("1 reached named body")
+				}
+			} else {
+				prevResult = TracedOrphan
+			}
+		case tracing.Result == Edge:
+			log.Fatalf("ERROR!!! Tracing result for psd goes to edge:\n %s\n", *psd)
+		case tracing.Result >= MinAnchor:
+			reachedBody = BodyId(tracing.Result)
+			numTracesPerBody[reachedBody]++
+			namedBody, isNamed := namedBodyMap[reachedBody]
+			if isNamed {
+				reachedName = namedBody.Name
+				if prevResult != NoTraces {
+					switch prevResult {
+					case TracedOrphan:
+						result = PsdOrphanNamed
+						comment = "1 reached named body"
+					case TracedAnchor:
+						result = PsdAnchorNamed
+						comment = fmt.Sprintf("Disagree: anchor %s and named %s",
+							prevReachedBody, reachedBody)
+					case TracedNamed:
+						if prevReachedBody == reachedBody {
+							result = PsdNamedAgree
+							comment = "2 reached same named body"
+						} else {
+							result = PsdNamedDisagree
+							comment = fmt.Sprintf("Disagree: reached named bodies %s and %s",
+								reachedBody, prevReachedBody)
+						}
+					}
+				} else {
+					prevResult = TracedNamed
+					prevReachedBody = reachedBody
+				}
+			} else { // We are anchor, not named
+				reachedName = reachedBody.String()
+				if prevResult != NoTraces {
+					switch prevResult {
+					case TracedOrphan:
+						result = PsdOrphanAnchor
+						comment = "1 reached anchor body"
+					case TracedAnchor:
+						if prevReachedBody == reachedBody {
+							result = PsdAnchorAgree
+							comment = "2 reached same anchor body"
+						} else {
+							result = PsdAnchorDisagree
+							comment = fmt.Sprintf("Disagree: reached anchor bodies %s and %s",
+								reachedBody, prevReachedBody)
+						}
+					case TracedNamed:
+						result = PsdAnchorNamed
+						comment = fmt.Sprintf("Disagree: reached anchor %s and named %s",
+							reachedBody, prevReachedBody)
+					}
+				} else {
+					prevResult = TracedAnchor
+					prevReachedBody = reachedBody
+				}
+			}
+		}
+		tracingsAnalyzed++
 	}
 	return
 }

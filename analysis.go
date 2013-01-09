@@ -80,6 +80,7 @@ func (stats TracingStats) Print() {
 // BodyStats describes postsynapse stats for a given body.
 type BodyStats struct {
 	NumPostSyn          int "Number of postsynaptic sites"
+	NumDenseAnchored    int "Postsynaptic sites traced densely to anchored body"
 	NumDenseNamed       int "Postsynaptic sites traced densely to named body"
 	NumTracedNamed2     int "Postsynaptic sites traced sparsely by at least 2 to named body"
 	NumTracedNamed1     int "Postsynaptic sites traced sparsely by at least 1 to named body"
@@ -94,6 +95,12 @@ type NamedStats map[string]BodyStats
 func (stats *NamedStats) AddPostSyn(name string) {
 	bodyStats, _ := (*stats)[name]
 	bodyStats.NumPostSyn++
+	(*stats)[name] = bodyStats
+}
+
+func (stats *NamedStats) AddDenseAnchored(name string) {
+	bodyStats, _ := (*stats)[name]
+	bodyStats.NumDenseAnchored++
 	(*stats)[name] = bodyStats
 }
 
@@ -140,7 +147,9 @@ func (stats NamedStats) WriteCsv(writer io.Writer) {
 	nameList := stats.GetSortedNames()
 
 	// Print header along first row
-	record := []string{"Body Name", "# PSDs", "PSDs traced densely to named",
+	record := []string{"Body Name", "# PSDs",
+		"PSDs traced densely to anchored",
+		"PSDs traced densely to named",
 		"PSDs traced sparsely (>= 2) to named", "PSDs traced sparsely (>= 1) to named",
 		"PSDs untraced to any anchor", "PSDs untraced to any named",
 		"PSDs not densely or sparsely traced"}
@@ -154,6 +163,7 @@ func (stats NamedStats) WriteCsv(writer io.Writer) {
 	for _, name := range nameList {
 		record := []string{
 			name, strconv.Itoa(stats[name].NumPostSyn),
+			strconv.Itoa(stats[name].NumDenseAnchored),
 			strconv.Itoa(stats[name].NumDenseNamed),
 			strconv.Itoa(stats[name].NumTracedNamed2),
 			strconv.Itoa(stats[name].NumTracedNamed1),
